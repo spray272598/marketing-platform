@@ -30,7 +30,7 @@ func (s *TradeService) CreateSeckillOrder(ctx context.Context, activityID string
 	// 1. 检查是否已下单
 	existOrder, _ := s.orderRepo.GetUserActivityOrder(ctx, userID, activityID)
 	if existOrder != nil {
-		return nil, fmt.Errorf(common.SeckillOrderDuplicate.Code + ": " + common.SeckillOrderDuplicate.Info)
+		return nil, fmt.Errorf("%s: %s", common.SeckillOrderDuplicate.Code, common.SeckillOrderDuplicate.Info)
 	}
 
 	// 2. Redis原子扣减库存
@@ -39,7 +39,7 @@ func (s *TradeService) CreateSeckillOrder(ctx context.Context, activityID string
 		return nil, err
 	}
 	if !ok {
-		return nil, fmt.Errorf(common.SeckillStockNotEnough.Code + ": " + common.SeckillStockNotEnough.Info)
+		return nil, fmt.Errorf("%s: %s", common.SeckillStockNotEnough.Code, common.SeckillStockNotEnough.Info)
 	}
 
 	// 3. 创建订单
