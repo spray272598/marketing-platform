@@ -26,7 +26,7 @@ func NewService() *Service {
 			"seckill":  {Name: "seckill", BaseURL: "http://localhost:18091"},
 			"groupbuy": {Name: "groupbuy", BaseURL: "http://localhost:18092"},
 			"lottery":  {Name: "lottery", BaseURL: "http://localhost:18093"},
-			"prize":    {Name: "prize", BaseURL: "http://localhost:18094"},
+			"stock":    {Name: "stock", BaseURL: "http://localhost:18094"},
 		},
 		client: &http.Client{
 			Timeout: 10 * time.Second,

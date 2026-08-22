@@ -29,7 +29,7 @@
                 │                   │                           │
                 ▼                   ▼                           ▼
         ┌──────────────┐  ┌──────────────┐           ┌──────────────┐
-        │  prize:18094 │  │  MySQL 8.0   │           │  Redis 7.x   │
+        │ stock:18094  │  │  MySQL 8.0   │           │  Redis 7.x   │
         │ (公共库存服务) │  │  (数据存储)   │           │  (缓存/锁)   │
         └──────────────┘  └──────────────┘           └──────────────┘
 ```
@@ -75,7 +75,7 @@ mysql -u root -proot < deploy/mysql/init.sql
 go run cmd/seckill/main.go
 go run cmd/groupbuy/main.go
 go run cmd/lottery/main.go
-go run cmd/prize/main.go
+go run cmd/stock/main.go
 go run cmd/gateway/main.go
 ```
 
@@ -160,6 +160,17 @@ type PaidRefundStrategy struct{}
 4. 失败重试，保证最终一致
 ```
 
+### 6. 统一库存抽象（stock服务）
+
+```
+stock_key 命名规范：
+  product:{sku_id}   - 商品库存（秒杀扣减）
+  team:{team_id}     - 团位库存（拼团扣减）
+  prize:{prize_id}   - 奖品库存（抽奖扣减）
+```
+
+三个业务服务统一调用stock服务扣减库存，通过stock_key区分库存类型。
+
 ## API接口
 
 ### 秒杀服务 (port: 18091)
@@ -193,9 +204,9 @@ type PaidRefundStrategy struct{}
 
 | 接口 | 方法 | 说明 |
 |------|------|------|
-| /api/v1/prize/stock/deduct | POST | 扣减库存 |
-| /api/v1/prize/stock/query | GET | 查询库存 |
-| /api/v1/prize/stock/restore | POST | 恢复库存 |
+| /api/v1/stock/deduct | POST | 扣减库存 |
+| /api/v1/stock/query | GET | 查询库存 |
+| /api/v1/stock/restore | POST | 恢复库存 |
 
 ### Gateway网关 (port: 8080)
 

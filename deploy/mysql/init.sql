@@ -1,3 +1,34 @@
+-- 创建库存库
+CREATE DATABASE IF NOT EXISTS marketing_stock;
+USE marketing_stock;
+
+CREATE TABLE stock_item (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    stock_key VARCHAR(64) NOT NULL COMMENT '库存唯一键 (product:{sku_id} / team:{team_id} / prize:{prize_id})',
+    stock_name VARCHAR(64) NOT NULL COMMENT '库存名称',
+    stock_type VARCHAR(32) NOT NULL COMMENT '库存类型：product=商品库存 team=团位库存 prize=奖品库存',
+    stock INT NOT NULL DEFAULT 0 COMMENT '当前库存',
+    total INT NOT NULL DEFAULT 0 COMMENT '总量',
+    create_time DATETIME DEFAULT CURRENT_TIMESTAMP,
+    update_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_stock_key (stock_key)
+) COMMENT '库存表';
+
+-- 秒杀商品库存
+INSERT INTO stock_item (stock_key, stock_name, stock_type, stock, total) VALUES
+('product:sku_001', 'iPhone 16', 'product', 100, 100),
+('product:sku_002', 'MacBook Pro', 'product', 50, 50);
+
+-- 拼团团位库存
+INSERT INTO stock_item (stock_key, stock_name, stock_type, stock, total) VALUES
+('team:team_slot_001', '拼团团位-A', 'team', 200, 200);
+
+-- 抽奖奖品库存
+INSERT INTO stock_item (stock_key, stock_name, stock_type, stock, total) VALUES
+('prize:award_001', '一等奖-iPhone', 'prize', 10, 10),
+('prize:award_002', '二等奖-AirPods', 'prize', 50, 50),
+('prize:award_003', '三等奖-优惠券', 'prize', 1000, 1000);
+
 -- 创建秒杀库
 CREATE DATABASE IF NOT EXISTS marketing_seckill;
 USE marketing_seckill;
@@ -154,18 +185,3 @@ CREATE TABLE lottery_order (
     update_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     UNIQUE KEY uk_order_id (order_id)
 ) COMMENT '抽奖订单表';
-
--- 创建奖品库
-CREATE DATABASE IF NOT EXISTS marketing_prize;
-USE marketing_prize;
-
-CREATE TABLE prize_item (
-    id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    prize_id VARCHAR(32) NOT NULL COMMENT '奖品ID',
-    prize_name VARCHAR(64) NOT NULL COMMENT '奖品名称',
-    stock INT NOT NULL DEFAULT 0 COMMENT '库存',
-    total INT NOT NULL DEFAULT 0 COMMENT '总量',
-    create_time DATETIME DEFAULT CURRENT_TIMESTAMP,
-    update_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    UNIQUE KEY uk_prize_id (prize_id)
-) COMMENT '奖品表';

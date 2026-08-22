@@ -1,4 +1,4 @@
-version: '3.8'
+﻿version: '3.8'
 
 services:
   mysql:
@@ -118,14 +118,14 @@ services:
       redis:
         condition: service_healthy
 
-  prize:
+  stock:
     build:
       context: ..
       dockerfile: deploy/Dockerfile
-      target: prize
-    container_name: marketing-prize
+      target: stock
+    container_name: marketing-stock
     environment:
-      MYSQL_DSN: "root:root@tcp(mysql:3306)/marketing_prize?charset=utf8mb4&parseTime=True&loc=Local"
+      MYSQL_DSN: "root:root@tcp(mysql:3306)/marketing_stock?charset=utf8mb4&parseTime=True&loc=Local"
     ports:
       - "18094:18094"
     networks:
@@ -148,7 +148,7 @@ services:
       - seckill
       - groupbuy
       - lottery
-      - prize
+      - stock
 
 volumes:
   mysql-data:
