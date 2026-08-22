@@ -1,0 +1,68 @@
+version: '3.8'
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: marketing-mysql
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      TZ: Asia/Shanghai
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./mysql:/docker-entrypoint-initdb.d
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    networks:
+      - marketing-net
+
+  redis:
+    image: redis:7-alpine
+    container_name: marketing-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+      - ./redis/redis.conf:/etc/redis/redis.conf
+    command: redis-server /etc/redis/redis.conf
+    networks:
+      - marketing-net
+
+  rabbitmq:
+    image: rabbitmq:3.12-management
+    container_name: marketing-rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    networks:
+      - marketing-net
+
+  nacos:
+    image: nacos/nacos-server:v2.2.0
+    container_name: marketing-nacos
+    ports:
+      - "8848:8848"
+      - "9848:9848"
+    environment:
+      MODE: standalone
+      JVM_XMS: 256m
+      JVM_XMX: 256m
+    volumes:
+      - nacos_data:/home/nacos/data
+    networks:
+      - marketing-net
+
+volumes:
+  mysql_data:
+  redis_data:
+  rabbitmq_data:
+  nacos_data:
+
+networks:
+  marketing-net:
+    driver: bridge

@@ -1,0 +1,81 @@
+syntax = "proto3";
+
+package groupbuy.v1;
+
+option go_package = "github.com/marketing-platform/api/groupbuy/v1;groupbuyv1";
+
+// 拼团服务
+service GroupBuyService {
+  // 查询拼团活动配置
+  rpc QueryGroupBuyActivity(QueryGroupBuyActivityReq) returns (QueryGroupBuyActivityResp);
+  // 拼团试算
+  rpc TrialGroupBuyMarket(TrialGroupBuyMarketReq) returns (TrialGroupBuyMarketResp);
+  // 锁单
+  rpc LockMarketPayOrder(LockMarketPayOrderReq) returns (LockMarketPayOrderResp);
+  // 结算
+  rpc SettlementMarketPayOrder(SettlementMarketPayOrderReq) returns (SettlementMarketPayOrderResp);
+  // 退单
+  rpc RefundMarketPayOrder(RefundMarketPayOrderReq) returns (RefundMarketPayOrderResp);
+}
+
+message QueryGroupBuyActivityReq {
+  string activity_id = 1;
+}
+
+message QueryGroupBuyActivityResp {
+  string activity_id = 1;
+  string activity_name = 2;
+  string discount_id = 3;
+  int32 group_type = 4;
+  int32 target_count = 5;
+  int32 activity_state = 6;
+}
+
+message TrialGroupBuyMarketReq {
+  string activity_id = 1;
+  int64 user_id = 2;
+  int32 market_original_price = 3;
+  string channel = 4;
+  string source = 5;
+}
+
+message TrialGroupBuyMarketResp {
+  string activity_id = 1;
+  int32 market_plan = 2;
+  string market_rule = 3;
+  int32 market_discount_amount = 4;
+  int32 market_pay_amount = 5;
+}
+
+message LockMarketPayOrderReq {
+  string activity_id = 1;
+  int64 user_id = 2;
+  string channel = 3;
+  string source = 4;
+}
+
+message LockMarketPayOrderResp {
+  string order_id = 1;
+  string team_id = 2;
+  int32 order_state = 3;
+}
+
+message SettlementMarketPayOrderReq {
+  string team_id = 1;
+}
+
+message SettlementMarketPayOrderResp {
+  string team_id = 1;
+  int32 team_state = 2;
+  int32 complete_count = 3;
+}
+
+message RefundMarketPayOrderReq {
+  string order_id = 1;
+  int64 user_id = 2;
+}
+
+message RefundMarketPayOrderResp {
+  string order_id = 1;
+  int32 order_state = 2;
+}
