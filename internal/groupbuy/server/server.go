@@ -1,28 +1,47 @@
 package server
 
 import (
-	"github.com/go-kratos/kratos/v2"
-	"github.com/go-kratos/kratos/v2/log"
+	"context"
+	"fmt"
+	"net/http"
+	"time"
+
+	"github.com/marketing-platform/internal/groupbuy/service"
 )
 
 type GroupBuyServer struct {
-	*kratos.App
+	httpServer *http.Server
 }
 
-func NewGroupBuyServer(
-	logger log.Logger,
-	grpcSrv *GRPCServer,
-) *GroupBuyServer {
-	app := kratos.New(
-		kratos.Name("groupbuy-market"),
-		kratos.Logger(logger),
-		kratos.Server(
-			grpcSrv.Server,
-		),
-	)
-	return &GroupBuyServer{App: app}
+func NewGroupBuyServer(groupBuySvc *service.GroupBuyService) *GroupBuyServer {
+	mux := http.NewServeMux()
+
+	mux.HandleFunc("/api/v1/groupbuy/activity/query", groupBuySvc.QueryGroupBuyActivityHTTP)
+	mux.HandleFunc("/api/v1/groupbuy/trial", groupBuySvc.TrialGroupBuyMarketHTTP)
+	mux.HandleFunc("/api/v1/groupbuy/order/lock", groupBuySvc.LockMarketPayOrderHTTP)
+	mux.HandleFunc("/api/v1/groupbuy/order/settlement", groupBuySvc.SettlementMarketPayOrderHTTP)
+	mux.HandleFunc("/api/v1/groupbuy/order/refund", groupBuySvc.RefundMarketPayOrderHTTP)
+
+	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"status":"ok","service":"groupbuy-market"}`))
+	})
+
+	srv := &http.Server{
+		Addr:         ":18092",
+		Handler:      mux,
+		ReadTimeout:  5 * time.Second,
+		WriteTimeout: 10 * time.Second,
+	}
+
+	return &GroupBuyServer{httpServer: srv}
 }
 
 func (s *GroupBuyServer) Run() error {
-	return s.App.Run()
+	fmt.Println("GroupBuy server listening on :18092")
+	return s.httpServer.ListenAndServe()
+}
+
+func (s *GroupBuyServer) Stop(ctx context.Context) error {
+	return s.httpServer.Shutdown(ctx)
 }

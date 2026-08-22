@@ -2,11 +2,14 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"os"
+	"time"
 
-	"github.com/go-kratos/kratos/v2/log"
+	"github.com/redis/go-redis/v9"
 	_ "go.uber.org/automaxprocs"
+	_ "github.com/go-sql-driver/mysql"
 
 	"github.com/marketing-platform/internal/seckill/biz"
 	"github.com/marketing-platform/internal/seckill/data"
@@ -15,33 +18,34 @@ import (
 )
 
 func main() {
-	logger := log.With(log.NewStdLogger(os.Stdout),
-		"ts", log.DefaultTimestamp,
-		"caller", log.DefaultCaller,
-		"service.id", "seckill-market",
-		"service.version", "1.0.0",
-	)
+	// Init MySQL
+	db, err := sql.Open("mysql", "root:root@tcp(127.0.0.1:3306)/marketing_seckill?charset=utf8mb4&parseTime=True&loc=Local")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to open db: %v\n", err)
+		os.Exit(1)
+	}
+	defer db.Close()
 
-	// TODO: Initialize database, redis, mq connections
-	// TODO: Initialize repos and services
-	// TODO: Use Wire for dependency injection
+	// Init Redis
+	rdb := redis.NewClient(&redis.Options{
+		Addr:         "127.0.0.1:6379",
+		ReadTimeout:  2 * time.Second,
+		WriteTimeout: 2 * time.Second,
+	})
+	defer rdb.Close()
 
-	// Placeholder initialization
-	_ = biz.TradeService{}
-	_ = data.Data{}
+	dataLayer := data.NewData(db, rdb, nil, nil, nil)
 
-	_ = logger
+	activityRepo := data.NewActivityRepo(dataLayer)
+	orderRepo := data.NewOrderRepo(dataLayer)
+	redisRepo := data.NewRedisRepo(rdb)
 
-	// Create service
-	tradeSvc := biz.NewTradeService(nil, nil, nil)
+	tradeSvc := biz.NewTradeService(orderRepo, redisRepo, nil)
+	_ = activityRepo
+
 	svc := service.NewSeckillService(tradeSvc)
 
-	// Create servers
-	grpcSrv := server.NewGRPCServer(svc)
-	httpSrv := server.NewHTTPServer(svc)
-
-	// Create app
-	app := server.NewSeckillServer(logger, grpcSrv, httpSrv)
+	app := server.NewSeckillServer(svc)
 
 	fmt.Println("Seckill market starting...")
 	if err := app.Run(); err != nil {

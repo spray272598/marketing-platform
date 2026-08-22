@@ -1,28 +1,46 @@
 package server
 
 import (
-	"github.com/go-kratos/kratos/v2"
-	"github.com/go-kratos/kratos/v2/log"
+	"context"
+	"fmt"
+	"net/http"
+	"time"
+
+	"github.com/marketing-platform/internal/lottery/service"
 )
 
 type LotteryServer struct {
-	*kratos.App
+	httpServer *http.Server
 }
 
-func NewLotteryServer(
-	logger log.Logger,
-	grpcSrv *GRPCServer,
-) *LotteryServer {
-	app := kratos.New(
-		kratos.Name("lottery-market"),
-		kratos.Logger(logger),
-		kratos.Server(
-			grpcSrv.Server,
-		),
-	)
-	return &LotteryServer{App: app}
+func NewLotteryServer(lotterySvc *service.LotteryService) *LotteryServer {
+	mux := http.NewServeMux()
+
+	mux.HandleFunc("/api/v1/lottery/activity/query", lotterySvc.QueryLotteryActivityHTTP)
+	mux.HandleFunc("/api/v1/lottery/strategy/query", lotterySvc.QueryLotteryStrategyHTTP)
+	mux.HandleFunc("/api/v1/lottery/raffle", lotterySvc.RaffleHTTP)
+	mux.HandleFunc("/api/v1/lottery/order/query", lotterySvc.QueryUserRaffleOrderHTTP)
+
+	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"status":"ok","service":"lottery-market"}`))
+	})
+
+	srv := &http.Server{
+		Addr:         ":18093",
+		Handler:      mux,
+		ReadTimeout:  5 * time.Second,
+		WriteTimeout: 10 * time.Second,
+	}
+
+	return &LotteryServer{httpServer: srv}
 }
 
 func (s *LotteryServer) Run() error {
-	return s.App.Run()
+	fmt.Println("Lottery server listening on :18093")
+	return s.httpServer.ListenAndServe()
+}
+
+func (s *LotteryServer) Stop(ctx context.Context) error {
+	return s.httpServer.Shutdown(ctx)
 }

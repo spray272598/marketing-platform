@@ -1,36 +1,45 @@
 package main
 
 import (
+	"context"
+	"database/sql"
 	"fmt"
 	"os"
 
-	"github.com/go-kratos/kratos/v2/log"
 	_ "go.uber.org/automaxprocs"
+	_ "github.com/go-sql-driver/mysql"
 
 	"github.com/marketing-platform/internal/lottery/biz"
+	"github.com/marketing-platform/internal/lottery/data"
 	"github.com/marketing-platform/internal/lottery/server"
 	"github.com/marketing-platform/internal/lottery/service"
 )
 
 func main() {
-	logger := log.With(log.NewStdLogger(os.Stdout),
-		"ts", log.DefaultTimestamp,
-		"caller", log.DefaultCaller,
-		"service.id", "lottery-market",
-		"service.version", "1.0.0",
-	)
+	// Init MySQL
+	db, err := sql.Open("mysql", "root:root@tcp(127.0.0.1:3306)/marketing_lottery?charset=utf8mb4&parseTime=True&loc=Local")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to open db: %v\n", err)
+		os.Exit(1)
+	}
+	defer db.Close()
 
-	_ = logger
+	dataLayer := data.NewData(db, nil)
 
-	// Create services
-	raffleSvc := biz.NewRaffleService(nil, nil, nil)
+	activityRepo := data.NewActivityRepo(dataLayer)
+	strategyRepo := data.NewStrategyRepo(dataLayer)
+	orderRepo := data.NewOrderRepo(dataLayer)
+
+	raffleSvc := biz.NewRaffleService(activityRepo, strategyRepo, orderRepo)
 	svc := service.NewLotteryService(raffleSvc)
 
-	// Create gRPC server
-	grpcSrv := server.NewGRPCServer(svc)
+	app := server.NewLotteryServer(svc)
 
 	fmt.Println("Lottery market starting...")
+	if err := app.Run(); err != nil {
+		fmt.Fprintf(os.Stderr, "failed to run server: %v\n", err)
+		os.Exit(1)
+	}
 
-	// TODO: Create and run Kratos app
-	_ = grpcSrv
+	_ = context.Background()
 }

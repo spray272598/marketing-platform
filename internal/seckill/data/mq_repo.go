@@ -9,25 +9,24 @@ import (
 	"github.com/marketing-platform/internal/seckill/biz"
 )
 
-type MQRepo struct {
+type mqRepo struct {
 	conn    *amqp.Connection
 	channel *amqp.Channel
 }
 
-func NewMQRepo(conn *amqp.Connection, ch *amqp.Channel) *MQRepo {
-	return &MQRepo{conn: conn, channel: ch}
+func NewMQRepo(conn *amqp.Connection, ch *amqp.Channel) biz.MQRepo {
+	return &mqRepo{conn: conn, channel: ch}
 }
 
-func (r *MQRepo) PublishOrderMessage(ctx context.Context, order *biz.SeckillOrder) error {
+func (r *mqRepo) PublishOrderMessage(ctx context.Context, order *biz.SeckillOrder) error {
 	queueName := "seckill_order_created"
 
-	// 声明队列
 	_, err := r.channel.QueueDeclare(
 		queueName,
-		true,  // durable
-		false, // autoDelete
-		false, // exclusive
-		false, // noWait
+		true,
+		false,
+		false,
+		false,
 		nil,
 	)
 	if err != nil {
@@ -37,10 +36,10 @@ func (r *MQRepo) PublishOrderMessage(ctx context.Context, order *biz.SeckillOrde
 	body, _ := json.Marshal(order)
 
 	return r.channel.PublishWithContext(ctx,
-		"",        // exchange
-		queueName, // routing key
-		false,     // mandatory
-		false,     // immediate
+		"",
+		queueName,
+		false,
+		false,
 		amqp.Publishing{
 			ContentType: "application/json",
 			Body:        body,

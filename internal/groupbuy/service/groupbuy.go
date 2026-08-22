@@ -1,14 +1,14 @@
 package service
 
 import (
-	"context"
+	"encoding/json"
+	"net/http"
 
-	pb "github.com/marketing-platform/api/groupbuy/v1"
 	"github.com/marketing-platform/internal/groupbuy/biz"
+	"github.com/marketing-platform/pkg/common"
 )
 
 type GroupBuyService struct {
-	pb.UnimplementedGroupBuyServiceServer
 	trialSvc      *biz.TrialService
 	lockSvc       *biz.LockService
 	settlementSvc *biz.SettlementService
@@ -29,55 +29,105 @@ func NewGroupBuyService(
 	}
 }
 
-func (s *GroupBuyService) QueryGroupBuyActivity(ctx context.Context, req *pb.QueryGroupBuyActivityReq) (*pb.QueryGroupBuyActivityResp, error) {
-	return &pb.QueryGroupBuyActivityResp{}, nil
+func (s *GroupBuyService) QueryGroupBuyActivityHTTP(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	resp := common.Success[any](nil)
+	json.NewEncoder(w).Encode(resp)
 }
 
-func (s *GroupBuyService) TrialGroupBuyMarket(ctx context.Context, req *pb.TrialGroupBuyMarketReq) (*pb.TrialGroupBuyMarketResp, error) {
-	result, err := s.trialSvc.TrialMarket(ctx, req.ActivityId, req.MarketOriginalPrice)
-	if err != nil {
-		return nil, err
+func (s *GroupBuyService) TrialGroupBuyMarketHTTP(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	var req struct {
+		ActivityId          string `json:"activity_id"`
+		UserId              int64  `json:"user_id"`
+		MarketOriginalPrice int32  `json:"market_original_price"`
 	}
-	return &pb.TrialGroupBuyMarketResp{
-		ActivityId:           result.ActivityID,
-		MarketPlan:           0,
-		MarketRule:           result.MarketRule,
-		MarketDiscountAmount: result.MarketDiscountAmt,
-		MarketPayAmount:      result.MarketPayAmount,
-	}, nil
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		resp := common.Fail[any]("400", "参数错误")
+		json.NewEncoder(w).Encode(resp)
+		return
+	}
+
+	result, err := s.trialSvc.TrialMarket(r.Context(), req.ActivityId, req.MarketOriginalPrice)
+	if err != nil {
+		resp := common.Fail[any]("500", err.Error())
+		json.NewEncoder(w).Encode(resp)
+		return
+	}
+
+	resp := common.Success(result)
+	json.NewEncoder(w).Encode(resp)
 }
 
-func (s *GroupBuyService) LockMarketPayOrder(ctx context.Context, req *pb.LockMarketPayOrderReq) (*pb.LockMarketPayOrderResp, error) {
-	order, err := s.lockSvc.LockOrder(ctx, req.ActivityId, req.UserId, req.Channel, req.Source)
-	if err != nil {
-		return nil, err
+func (s *GroupBuyService) LockMarketPayOrderHTTP(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	var req struct {
+		ActivityId string `json:"activity_id"`
+		UserId     int64  `json:"user_id"`
+		Channel    string `json:"channel"`
+		Source     string `json:"source"`
 	}
-	return &pb.LockMarketPayOrderResp{
-		OrderId:    order.OrderID,
-		TeamId:     order.TeamID,
-		OrderState: order.OrderState,
-	}, nil
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		resp := common.Fail[any]("400", "参数错误")
+		json.NewEncoder(w).Encode(resp)
+		return
+	}
+
+	order, err := s.lockSvc.LockOrder(r.Context(), req.ActivityId, req.UserId, req.Channel, req.Source)
+	if err != nil {
+		resp := common.Fail[any]("500", err.Error())
+		json.NewEncoder(w).Encode(resp)
+		return
+	}
+
+	resp := common.Success(order)
+	json.NewEncoder(w).Encode(resp)
 }
 
-func (s *GroupBuyService) SettlementMarketPayOrder(ctx context.Context, req *pb.SettlementMarketPayOrderReq) (*pb.SettlementMarketPayOrderResp, error) {
-	team, err := s.settlementSvc.Settlement(ctx, req.TeamId)
-	if err != nil {
-		return nil, err
+func (s *GroupBuyService) SettlementMarketPayOrderHTTP(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	var req struct {
+		TeamId string `json:"team_id"`
 	}
-	return &pb.SettlementMarketPayOrderResp{
-		TeamId:        team.TeamID,
-		TeamState:     team.TeamState,
-		CompleteCount: team.CompleteCount,
-	}, nil
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		resp := common.Fail[any]("400", "参数错误")
+		json.NewEncoder(w).Encode(resp)
+		return
+	}
+
+	team, err := s.settlementSvc.Settlement(r.Context(), req.TeamId)
+	if err != nil {
+		resp := common.Fail[any]("500", err.Error())
+		json.NewEncoder(w).Encode(resp)
+		return
+	}
+
+	resp := common.Success(team)
+	json.NewEncoder(w).Encode(resp)
 }
 
-func (s *GroupBuyService) RefundMarketPayOrder(ctx context.Context, req *pb.RefundMarketPayOrderReq) (*pb.RefundMarketPayOrderResp, error) {
-	order, err := s.refundSvc.Refund(ctx, req.OrderId)
-	if err != nil {
-		return nil, err
+func (s *GroupBuyService) RefundMarketPayOrderHTTP(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	var req struct {
+		OrderId string `json:"order_id"`
 	}
-	return &pb.RefundMarketPayOrderResp{
-		OrderId:    order.OrderID,
-		OrderState: order.OrderState,
-	}, nil
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		resp := common.Fail[any]("400", "参数错误")
+		json.NewEncoder(w).Encode(resp)
+		return
+	}
+
+	order, err := s.refundSvc.Refund(r.Context(), req.OrderId)
+	if err != nil {
+		resp := common.Fail[any]("500", err.Error())
+		json.NewEncoder(w).Encode(resp)
+		return
+	}
+
+	resp := common.Success(order)
+	json.NewEncoder(w).Encode(resp)
 }

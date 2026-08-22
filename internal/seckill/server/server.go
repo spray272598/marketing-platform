@@ -1,30 +1,47 @@
 package server
 
 import (
-	"github.com/go-kratos/kratos/v2"
-	"github.com/go-kratos/kratos/v2/log"
+	"context"
+	"fmt"
+	"net/http"
+	"time"
+
+	"github.com/marketing-platform/internal/seckill/service"
 )
 
 type SeckillServer struct {
-	*kratos.App
+	httpServer *http.Server
 }
 
-func NewSeckillServer(
-	logger log.Logger,
-	grpcSrv *GRPCServer,
-	httpSrv *HTTPServer,
-) *SeckillServer {
-	app := kratos.New(
-		kratos.Name("seckill-market"),
-		kratos.Logger(logger),
-		kratos.Server(
-			grpcSrv.Server,
-			httpSrv.Server,
-		),
-	)
-	return &SeckillServer{App: app}
+func NewSeckillServer(seckillSvc *service.SeckillService) *SeckillServer {
+	mux := http.NewServeMux()
+
+	// Register HTTP handlers
+	mux.HandleFunc("/api/v1/seckill/activity/query", seckillSvc.QuerySeckillActivityHTTP)
+	mux.HandleFunc("/api/v1/seckill/order/create", seckillSvc.CreateSeckillOrderHTTP)
+	mux.HandleFunc("/api/v1/seckill/order/query", seckillSvc.QuerySeckillOrderHTTP)
+
+	// Health check
+	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"status":"ok","service":"seckill-market"}`))
+	})
+
+	srv := &http.Server{
+		Addr:         ":18091",
+		Handler:      mux,
+		ReadTimeout:  5 * time.Second,
+		WriteTimeout: 10 * time.Second,
+	}
+
+	return &SeckillServer{httpServer: srv}
 }
 
 func (s *SeckillServer) Run() error {
-	return s.App.Run()
+	fmt.Println("Seckill server listening on :18091")
+	return s.httpServer.ListenAndServe()
+}
+
+func (s *SeckillServer) Stop(ctx context.Context) error {
+	return s.httpServer.Shutdown(ctx)
 }

@@ -1,7 +1,6 @@
 package data
 
 import (
-	"context"
 	"database/sql"
 
 	amqp "github.com/rabbitmq/amqp091-go"
@@ -55,17 +54,4 @@ func (d *Data) Close() error {
 		}
 	}
 	return nil
-}
-
-func (d *Data) HealthCheck(ctx context.Context) map[string]bool {
-	health := make(map[string]bool)
-
-	if d.db != nil {
-		health["mysql"] = d.db.PingContext(ctx) == nil
-	}
-	if d.rdb != nil {
-		health["redis"] = d.rdb.Ping(ctx).Err() == nil
-	}
-
-	return health
 }

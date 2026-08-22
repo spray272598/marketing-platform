@@ -6,17 +6,18 @@ import (
 	"strconv"
 
 	"github.com/redis/go-redis/v9"
+	"github.com/marketing-platform/internal/seckill/biz"
 )
 
-type RedisRepo struct {
+type redisRepo struct {
 	client *redis.Client
 }
 
-func NewRedisRepo(client *redis.Client) *RedisRepo {
-	return &RedisRepo{client: client}
+func NewRedisRepo(client *redis.Client) biz.RedisRepo {
+	return &redisRepo{client: client}
 }
 
-func (r *RedisRepo) GetStock(ctx context.Context, activityID string) (int32, error) {
+func (r *redisRepo) GetStock(ctx context.Context, activityID string) (int32, error) {
 	key := fmt.Sprintf("seckill:stock:%s", activityID)
 	val, err := r.client.Get(ctx, key).Result()
 	if err != nil {
@@ -26,9 +27,10 @@ func (r *RedisRepo) GetStock(ctx context.Context, activityID string) (int32, err
 	return int32(stock), nil
 }
 
-func (r *RedisRepo) DecrStock(ctx context.Context, activityID string) (bool, error) {
+func (r *redisRepo) DecrStock(ctx context.Context, activityID string) (bool, error) {
 	key := fmt.Sprintf("seckill:stock:%s", activityID)
 
+	// Lua脚本: 原子扣减库存
 	script := redis.NewScript(`
 		local stock = tonumber(redis.call('GET', KEYS[1]))
 		if stock == nil then
@@ -48,7 +50,7 @@ func (r *RedisRepo) DecrStock(ctx context.Context, activityID string) (bool, err
 	return result == 1, nil
 }
 
-func (r *RedisRepo) SetStock(ctx context.Context, activityID string, stock int32) error {
+func (r *redisRepo) SetStock(ctx context.Context, activityID string, stock int32) error {
 	key := fmt.Sprintf("seckill:stock:%s", activityID)
 	return r.client.Set(ctx, key, stock, 0).Err()
 }
