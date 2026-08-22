@@ -8,6 +8,7 @@ package main
 
 import (
 	"database/sql"
+	"os"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -18,15 +19,16 @@ import (
 )
 
 func InitializeSeckillServer() (*server.SeckillServer, func(), error) {
-	// Init MySQL
-	db, err := sql.Open("mysql", "root:root@tcp(127.0.0.1:3306)/marketing_seckill?charset=utf8mb4&parseTime=True&loc=Local")
+	mysqlDSN := getEnv("MYSQL_DSN", "root:root@tcp(127.0.0.1:3306)/marketing_seckill?charset=utf8mb4&parseTime=True&loc=Local")
+	redisAddr := getEnv("REDIS_ADDR", "127.0.0.1:6379")
+
+	db, err := sql.Open("mysql", mysqlDSN)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	// Init Redis
 	rdb := redis.NewClient(&redis.Options{
-		Addr:         "127.0.0.1:6379",
+		Addr:         redisAddr,
 		ReadTimeout:  2 * time.Second,
 		WriteTimeout: 2 * time.Second,
 	})
@@ -39,9 +41,8 @@ func InitializeSeckillServer() (*server.SeckillServer, func(), error) {
 	mqRepo := data.NewMQRepo(nil, nil)
 
 	tradeSvc := biz.NewTradeService(orderRepo, redisRepo, mqRepo)
-	_ = activityRepo
 
-	svc := service.NewSeckillService(tradeSvc)
+	svc := service.NewSeckillService(tradeSvc, activityRepo)
 	seckillServer := server.NewSeckillServer(svc)
 
 	cleanup := func() {
@@ -49,4 +50,11 @@ func InitializeSeckillServer() (*server.SeckillServer, func(), error) {
 	}
 
 	return seckillServer, cleanup, nil
+}
+
+func getEnv(key, defaultValue string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return defaultValue
 }

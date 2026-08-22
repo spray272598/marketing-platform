@@ -9,17 +9,35 @@ import (
 )
 
 type SeckillService struct {
-	tradeSvc *biz.TradeService
+	tradeSvc    *biz.TradeService
+	activityRepo biz.ActivityRepo
 }
 
-func NewSeckillService(tradeSvc *biz.TradeService) *SeckillService {
-	return &SeckillService{tradeSvc: tradeSvc}
+func NewSeckillService(tradeSvc *biz.TradeService, activityRepo biz.ActivityRepo) *SeckillService {
+	return &SeckillService{
+		tradeSvc:    tradeSvc,
+		activityRepo: activityRepo,
+	}
 }
 
 func (s *SeckillService) QuerySeckillActivityHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	// TODO: implement
-	resp := common.Success[any](nil)
+
+	activityID := r.URL.Query().Get("activity_id")
+	if activityID == "" {
+		resp := common.Fail[any]("400", "activity_id is required")
+		json.NewEncoder(w).Encode(resp)
+		return
+	}
+
+	activity, err := s.activityRepo.GetActivity(r.Context(), activityID)
+	if err != nil {
+		resp := common.Fail[any]("404", "activity not found")
+		json.NewEncoder(w).Encode(resp)
+		return
+	}
+
+	resp := common.Success(activity)
 	json.NewEncoder(w).Encode(resp)
 }
 
@@ -49,7 +67,21 @@ func (s *SeckillService) CreateSeckillOrderHTTP(w http.ResponseWriter, r *http.R
 
 func (s *SeckillService) QuerySeckillOrderHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	// TODO: implement
-	resp := common.Success[any](nil)
+
+	orderID := r.URL.Query().Get("order_id")
+	if orderID == "" {
+		resp := common.Fail[any]("400", "order_id is required")
+		json.NewEncoder(w).Encode(resp)
+		return
+	}
+
+	order, err := s.tradeSvc.GetOrder(r.Context(), orderID)
+	if err != nil {
+		resp := common.Fail[any]("404", "order not found")
+		json.NewEncoder(w).Encode(resp)
+		return
+	}
+
+	resp := common.Success(order)
 	json.NewEncoder(w).Encode(resp)
 }
