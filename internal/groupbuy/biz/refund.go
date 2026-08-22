@@ -18,14 +18,21 @@ func (s *UnpaidRefundStrategy) Refund(ctx context.Context, order *GroupBuyOrder)
 }
 
 type PaidRefundStrategy struct {
-	orderRepo OrderRepo
-	notifySvc *NotifyService
+	orderRepo   OrderRepo
+	notifySvc   *NotifyService
+	stockClient StockClient
 }
 
 func (s *PaidRefundStrategy) Refund(ctx context.Context, order *GroupBuyOrder) error {
 	if err := s.orderRepo.UpdateOrderState(ctx, order.OrderID, 2); err != nil {
 		return err
 	}
+
+	stockKey := fmt.Sprintf("team:%s", order.TeamID)
+	if err := s.stockClient.RestoreStock(ctx, stockKey, 1); err != nil {
+		return fmt.Errorf("restore stock failed: %w", err)
+	}
+
 	return s.notifySvc.CreateRefundNotify(ctx, order.OrderID, map[string]interface{}{
 		"order_id":    order.OrderID,
 		"user_id":     order.UserID,
@@ -34,17 +41,19 @@ func (s *PaidRefundStrategy) Refund(ctx context.Context, order *GroupBuyOrder) e
 }
 
 type RefundService struct {
-	strategies map[string]RefundStrategy
-	orderRepo  OrderRepo
+	strategies  map[string]RefundStrategy
+	orderRepo   OrderRepo
+	stockClient StockClient
 }
 
-func NewRefundService(orderRepo OrderRepo, notifySvc *NotifyService) *RefundService {
+func NewRefundService(orderRepo OrderRepo, notifySvc *NotifyService, stockClient StockClient) *RefundService {
 	return &RefundService{
 		strategies: map[string]RefundStrategy{
 			"unpaid": &UnpaidRefundStrategy{},
-			"paid":   &PaidRefundStrategy{orderRepo: orderRepo, notifySvc: notifySvc},
+			"paid":   &PaidRefundStrategy{orderRepo: orderRepo, notifySvc: notifySvc, stockClient: stockClient},
 		},
-		orderRepo: orderRepo,
+		orderRepo:   orderRepo,
+		stockClient: stockClient,
 	}
 }
 

@@ -109,7 +109,7 @@ func TestSettlement_Success(t *testing.T) {
 		TeamState:     0,
 	}
 
-	settlementSvc := NewSettlementService(teamRepo, orderRepo, notifySvc)
+	settlementSvc := NewSettlementService(teamRepo, orderRepo, notifySvc, &mockGBStockClient{})
 	team, err := settlementSvc.Settlement(context.Background(), "team_001")
 
 	if err != nil {
@@ -141,7 +141,7 @@ func TestRefund_Success(t *testing.T) {
 		OrderState: 1,
 	}
 
-	refundSvc := NewRefundService(orderRepo, notifySvc)
+	refundSvc := NewRefundService(orderRepo, notifySvc, &mockGBStockClient{})
 	order, err := refundSvc.Refund(context.Background(), "order_001")
 
 	if err != nil {

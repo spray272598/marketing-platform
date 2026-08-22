@@ -1,25 +1,30 @@
 package main
 
 import (
+	"context"
 	"database/sql"
-	"fmt"
 	"os"
 
-	_ "go.uber.org/automaxprocs"
 	_ "github.com/go-sql-driver/mysql"
 
 	"github.com/marketing-platform/internal/lottery/biz"
 	"github.com/marketing-platform/internal/lottery/data"
 	"github.com/marketing-platform/internal/lottery/server"
 	"github.com/marketing-platform/internal/lottery/service"
+	"github.com/marketing-platform/pkg/common"
+	"github.com/marketing-platform/pkg/config"
+	"github.com/marketing-platform/pkg/log"
 )
 
 func main() {
-	mysqlDSN := getEnv("MYSQL_DSN", "root:root@tcp(127.0.0.1:3306)/marketing_lottery?charset=utf8mb4&parseTime=True&loc=Local")
+	cfg := config.LoadOrDefault("")
+	logger := log.NewLogger(cfg.Log.Level, cfg.Log.Format)
+
+	mysqlDSN := cfg.GetMySQLDSN("root:root@tcp(127.0.0.1:3306)/marketing_lottery?charset=utf8mb4&parseTime=True&loc=Local")
 
 	db, err := sql.Open("mysql", mysqlDSN)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to open db: %v\n", err)
+		logger.Error("failed to open db", log.Fields{"error": err})
 		os.Exit(1)
 	}
 	defer db.Close()
@@ -33,18 +38,16 @@ func main() {
 	raffleSvc := biz.NewRaffleService(activityRepo, strategyRepo, orderRepo)
 	svc := service.NewLotteryService(raffleSvc)
 
-	app := server.NewLotteryServer(svc)
+	lotteryServer := server.NewLotteryServer(svc)
 
-	fmt.Println("Lottery market starting...")
-	if err := app.Run(); err != nil {
-		fmt.Fprintf(os.Stderr, "failed to run server: %v\n", err)
+	_, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go common.WaitForShutdown(cancel)
+
+	logger.Info("Lottery market starting...", log.Fields{"addr": ":18093"})
+	if err := lotteryServer.Run(); err != nil {
+		logger.Error("failed to run server", log.Fields{"error": err})
 		os.Exit(1)
 	}
-}
-
-func getEnv(key, defaultValue string) string {
-	if value := os.Getenv(key); value != "" {
-		return value
-	}
-	return defaultValue
 }

@@ -232,3 +232,13 @@ func (m *mockNotifyTaskRepo) GetTaskByUUID(ctx context.Context, uuid string) (*N
 	}
 	return nil, fmt.Errorf("task not found")
 }
+
+type mockGBStockClient struct{}
+
+func (m *mockGBStockClient) DeductStock(ctx context.Context, stockKey string, count int32) error {
+	return nil
+}
+
+func (m *mockGBStockClient) RestoreStock(ctx context.Context, stockKey string, count int32) error {
+	return nil
+}

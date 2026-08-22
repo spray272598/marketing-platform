@@ -40,8 +40,8 @@ func (s *StockService) DeductStock(ctx context.Context, stockKey string, count i
 	defer s.mu.Unlock()
 
 	item, err := s.stockRepo.GetStock(ctx, stockKey)
-	if err != nil {
-		return false, fmt.Errorf("stock not found: %w", err)
+	if err != nil || item == nil {
+		return false, fmt.Errorf("stock not found: %s", stockKey)
 	}
 
 	if item.Stock < count {
@@ -61,8 +61,8 @@ func (s *StockService) GetStock(ctx context.Context, stockKey string) (int32, er
 	defer s.mu.RUnlock()
 
 	item, err := s.stockRepo.GetStock(ctx, stockKey)
-	if err != nil {
-		return 0, err
+	if err != nil || item == nil {
+		return 0, fmt.Errorf("stock not found: %s", stockKey)
 	}
 
 	return item.Stock, nil
@@ -73,8 +73,8 @@ func (s *StockService) RestoreStock(ctx context.Context, stockKey string, count 
 	defer s.mu.Unlock()
 
 	item, err := s.stockRepo.GetStock(ctx, stockKey)
-	if err != nil {
-		return fmt.Errorf("stock not found: %w", err)
+	if err != nil || item == nil {
+		return fmt.Errorf("stock not found: %s", stockKey)
 	}
 
 	newStock := item.Stock + count

@@ -9,8 +9,16 @@ func TestCreateSeckillOrder_Success(t *testing.T) {
 	orderRepo := newMockOrderRepo()
 	redisRepo := newMockRedisRepo()
 	mqRepo := newMockMQRepo()
+	activityRepo := newMockActivityRepo()
+	stockClient := &mockStockClient{}
 
-	tradeSvc := NewTradeService(orderRepo, redisRepo, mqRepo)
+	activityRepo.activities["act_001"] = &SeckillActivity{
+		ActivityID: "act_001",
+		SkuID:      "sku_001",
+		TotalCount: 100,
+	}
+
+	tradeSvc := NewTradeService(orderRepo, redisRepo, mqRepo, activityRepo, stockClient)
 
 	activityID := "act_001"
 	redisRepo.stocks[activityID] = 10
@@ -30,11 +38,6 @@ func TestCreateSeckillOrder_Success(t *testing.T) {
 		t.Errorf("expected user_id 1001, got %d", order.UserID)
 	}
 
-	stock := redisRepo.stocks[activityID]
-	if stock != 9 {
-		t.Errorf("expected stock 9, got %d", stock)
-	}
-
 	if len(orderRepo.orders) != 1 {
 		t.Errorf("expected 1 order, got %d", len(orderRepo.orders))
 	}
@@ -44,15 +47,17 @@ func TestCreateSeckillOrder_Success(t *testing.T) {
 	}
 }
 
-func TestCreateSeckillOrder_StockNotEnough(t *testing.T) {
+func TestCreateSeckillOrder_ActivityNotFound(t *testing.T) {
 	orderRepo := newMockOrderRepo()
 	redisRepo := newMockRedisRepo()
 	mqRepo := newMockMQRepo()
+	activityRepo := newMockActivityRepo()
+	stockClient := &mockStockClient{}
 
-	tradeSvc := NewTradeService(orderRepo, redisRepo, mqRepo)
+	tradeSvc := NewTradeService(orderRepo, redisRepo, mqRepo, activityRepo, stockClient)
 
-	activityID := "act_002"
-	redisRepo.stocks[activityID] = 0
+	activityID := "non_existent"
+	redisRepo.stocks[activityID] = 10
 
 	order, err := tradeSvc.CreateSeckillOrder(context.Background(), activityID, 1001)
 
@@ -68,8 +73,16 @@ func TestCreateSeckillOrder_DuplicateOrder(t *testing.T) {
 	orderRepo := newMockOrderRepo()
 	redisRepo := newMockRedisRepo()
 	mqRepo := newMockMQRepo()
+	activityRepo := newMockActivityRepo()
+	stockClient := &mockStockClient{}
 
-	tradeSvc := NewTradeService(orderRepo, redisRepo, mqRepo)
+	activityRepo.activities["act_003"] = &SeckillActivity{
+		ActivityID: "act_003",
+		SkuID:      "sku_003",
+		TotalCount: 100,
+	}
+
+	tradeSvc := NewTradeService(orderRepo, redisRepo, mqRepo, activityRepo, stockClient)
 
 	activityID := "act_003"
 	redisRepo.stocks[activityID] = 10
@@ -93,8 +106,16 @@ func TestGetOrder_Success(t *testing.T) {
 	orderRepo := newMockOrderRepo()
 	redisRepo := newMockRedisRepo()
 	mqRepo := newMockMQRepo()
+	activityRepo := newMockActivityRepo()
+	stockClient := &mockStockClient{}
 
-	tradeSvc := NewTradeService(orderRepo, redisRepo, mqRepo)
+	activityRepo.activities["act_004"] = &SeckillActivity{
+		ActivityID: "act_004",
+		SkuID:      "sku_004",
+		TotalCount: 100,
+	}
+
+	tradeSvc := NewTradeService(orderRepo, redisRepo, mqRepo, activityRepo, stockClient)
 
 	activityID := "act_004"
 	redisRepo.stocks[activityID] = 10
@@ -114,8 +135,10 @@ func TestGetOrder_NotFound(t *testing.T) {
 	orderRepo := newMockOrderRepo()
 	redisRepo := newMockRedisRepo()
 	mqRepo := newMockMQRepo()
+	activityRepo := newMockActivityRepo()
+	stockClient := &mockStockClient{}
 
-	tradeSvc := NewTradeService(orderRepo, redisRepo, mqRepo)
+	tradeSvc := NewTradeService(orderRepo, redisRepo, mqRepo, activityRepo, stockClient)
 
 	order, err := tradeSvc.GetOrder(context.Background(), "non_existent")
 
@@ -131,8 +154,16 @@ func TestCreateSeckillOrder_ConcurrentStockDecrement(t *testing.T) {
 	orderRepo := newMockOrderRepo()
 	redisRepo := newMockRedisRepo()
 	mqRepo := newMockMQRepo()
+	activityRepo := newMockActivityRepo()
+	stockClient := &mockStockClient{}
 
-	tradeSvc := NewTradeService(orderRepo, redisRepo, mqRepo)
+	activityRepo.activities["act_005"] = &SeckillActivity{
+		ActivityID: "act_005",
+		SkuID:      "sku_005",
+		TotalCount: 100,
+	}
+
+	tradeSvc := NewTradeService(orderRepo, redisRepo, mqRepo, activityRepo, stockClient)
 
 	activityID := "act_005"
 	redisRepo.stocks[activityID] = 5

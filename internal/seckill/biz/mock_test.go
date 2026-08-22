@@ -70,9 +70,9 @@ func (m *mockOrderRepo) GetUserActivityOrder(ctx context.Context, userID int64, 
 }
 
 type mockRedisRepo struct {
-	mu      sync.RWMutex
-	stocks  map[string]int32
-	locked  map[string]bool
+	mu     sync.RWMutex
+	stocks map[string]int32
+	locked map[string]bool
 }
 
 func newMockRedisRepo() *mockRedisRepo {
@@ -120,5 +120,11 @@ func (m *mockMQRepo) PublishOrderMessage(ctx context.Context, order *SeckillOrde
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.messages = append(m.messages, order)
+	return nil
+}
+
+type mockStockClient struct{}
+
+func (m *mockStockClient) DeductStock(ctx context.Context, stockKey string, count int32) error {
 	return nil
 }
