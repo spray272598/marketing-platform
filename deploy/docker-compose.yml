@@ -4,22 +4,21 @@ services:
   mysql:
     image: mysql:8.0
     container_name: marketing-mysql
-    ports:
-      - "3306:3306"
     environment:
       MYSQL_ROOT_PASSWORD: root
-      TZ: Asia/Shanghai
+    ports:
+      - "3306:3306"
     volumes:
-      - mysql_data:/var/lib/mysql
-      - ./mysql:/docker-entrypoint-initdb.d
-    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+      - mysql-data:/var/lib/mysql
+      - ./mysql/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - marketing-net
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
       interval: 10s
       timeout: 5s
-      retries: 5
-    networks:
-      - marketing-net
+      retries: 10
+      start_period: 30s
 
   redis:
     image: redis:7-alpine
@@ -27,48 +26,49 @@ services:
     ports:
       - "6379:6379"
     volumes:
-      - redis_data:/data
-      - ./redis/redis.conf:/etc/redis/redis.conf
-    command: redis-server /etc/redis/redis.conf
+      - redis-data:/data
+    networks:
+      - marketing-net
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
-    networks:
-      - marketing-net
 
   rabbitmq:
-    image: rabbitmq:3.12-management
+    image: rabbitmq:3-management
     container_name: marketing-rabbitmq
-    ports:
-      - "5672:5672"
-      - "15672:15672"
     environment:
       RABBITMQ_DEFAULT_USER: guest
       RABBITMQ_DEFAULT_PASS: guest
+    ports:
+      - "5672:5672"
+      - "15672:15672"
     volumes:
-      - rabbitmq_data:/var/lib/rabbitmq
-    healthcheck:
-      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+      - rabbitmq-data:/var/lib/rabbitmq
     networks:
       - marketing-net
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
 
   seckill:
     build:
       context: ..
       dockerfile: deploy/Dockerfile
-    container_name: seckill-market
+      target: seckill
+    container_name: marketing-seckill
+    environment:
+      MYSQL_DSN: "root:root@tcp(mysql:3306)/marketing_seckill?charset=utf8mb4&parseTime=True&loc=Local"
+      REDIS_ADDR: "redis:6379"
+      RABBITMQ_URL: "amqp://guest:guest@rabbitmq:5672/"
     ports:
       - "18091:18091"
-    environment:
-      - SERVICE_NAME=seckill-market
-      - MYSQL_DSN=root:root@tcp(mysql:3306)/marketing_seckill?charset=utf8mb4&parseTime=True&loc=Local
-      - REDIS_ADDR=redis:6379
-      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
+    networks:
+      - marketing-net
     depends_on:
       mysql:
         condition: service_healthy
@@ -76,21 +76,21 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
-    networks:
-      - marketing-net
 
   groupbuy:
     build:
       context: ..
       dockerfile: deploy/Dockerfile
-    container_name: groupbuy-market
+      target: groupbuy
+    container_name: marketing-groupbuy
+    environment:
+      MYSQL_DSN: "root:root@tcp(mysql:3306)/marketing_groupbuy?charset=utf8mb4&parseTime=True&loc=Local"
+      REDIS_ADDR: "redis:6379"
+      RABBITMQ_URL: "amqp://guest:guest@rabbitmq:5672/"
     ports:
       - "18092:18092"
-    environment:
-      - SERVICE_NAME=groupbuy-market
-      - MYSQL_DSN=root:root@tcp(mysql:3306)/marketing_groupbuy?charset=utf8mb4&parseTime=True&loc=Local
-      - REDIS_ADDR=redis:6379
-      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
+    networks:
+      - marketing-net
     depends_on:
       mysql:
         condition: service_healthy
@@ -98,35 +98,62 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
-    networks:
-      - marketing-net
 
   lottery:
     build:
       context: ..
       dockerfile: deploy/Dockerfile
-    container_name: lottery-market
+      target: lottery
+    container_name: marketing-lottery
+    environment:
+      MYSQL_DSN: "root:root@tcp(mysql:3306)/marketing_lottery?charset=utf8mb4&parseTime=True&loc=Local"
+      REDIS_ADDR: "redis:6379"
     ports:
       - "18093:18093"
-    environment:
-      - SERVICE_NAME=lottery-market
-      - MYSQL_DSN=root:root@tcp(mysql:3306)/marketing_lottery?charset=utf8mb4&parseTime=True&loc=Local
-      - REDIS_ADDR=redis:6379
-      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
+    networks:
+      - marketing-net
     depends_on:
       mysql:
         condition: service_healthy
       redis:
         condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
+
+  prize:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+      target: prize
+    container_name: marketing-prize
+    environment:
+      MYSQL_DSN: "root:root@tcp(mysql:3306)/marketing_prize?charset=utf8mb4&parseTime=True&loc=Local"
+    ports:
+      - "18094:18094"
     networks:
       - marketing-net
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  gateway:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+      target: gateway
+    container_name: marketing-gateway
+    ports:
+      - "8080:8080"
+    networks:
+      - marketing-net
+    depends_on:
+      - seckill
+      - groupbuy
+      - lottery
+      - prize
 
 volumes:
-  mysql_data:
-  redis_data:
-  rabbitmq_data:
+  mysql-data:
+  redis-data:
+  rabbitmq-data:
 
 networks:
   marketing-net:

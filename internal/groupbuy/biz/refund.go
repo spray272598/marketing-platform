@@ -2,6 +2,7 @@ package biz
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/marketing-platform/pkg/common"
 )
@@ -18,14 +19,18 @@ func (s *UnpaidRefundStrategy) Refund(ctx context.Context, order *GroupBuyOrder)
 
 type PaidRefundStrategy struct {
 	orderRepo OrderRepo
-	mqRepo    MQRepo
+	notifySvc *NotifyService
 }
 
 func (s *PaidRefundStrategy) Refund(ctx context.Context, order *GroupBuyOrder) error {
-	if err := s.orderRepo.UpdateOrderState(ctx, order.OrderID, common.OrderStateCancelled); err != nil {
+	if err := s.orderRepo.UpdateOrderState(ctx, order.OrderID, 2); err != nil {
 		return err
 	}
-	return s.mqRepo.PublishRefundMessage(ctx, order.OrderID)
+	return s.notifySvc.CreateRefundNotify(ctx, order.OrderID, map[string]interface{}{
+		"order_id":    order.OrderID,
+		"user_id":     order.UserID,
+		"activity_id": order.ActivityID,
+	})
 }
 
 type RefundService struct {
@@ -33,11 +38,11 @@ type RefundService struct {
 	orderRepo  OrderRepo
 }
 
-func NewRefundService(orderRepo OrderRepo, mqRepo MQRepo) *RefundService {
+func NewRefundService(orderRepo OrderRepo, notifySvc *NotifyService) *RefundService {
 	return &RefundService{
 		strategies: map[string]RefundStrategy{
 			"unpaid": &UnpaidRefundStrategy{},
-			"paid":   &PaidRefundStrategy{orderRepo: orderRepo, mqRepo: mqRepo},
+			"paid":   &PaidRefundStrategy{orderRepo: orderRepo, notifySvc: notifySvc},
 		},
 		orderRepo: orderRepo,
 	}
@@ -46,20 +51,20 @@ func NewRefundService(orderRepo OrderRepo, mqRepo MQRepo) *RefundService {
 func (s *RefundService) Refund(ctx context.Context, orderID string) (*GroupBuyOrder, error) {
 	order, err := s.orderRepo.GetOrder(ctx, orderID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%s: %w", common.GroupBuyOrderNotExist.Code, err)
 	}
 
 	var strategy RefundStrategy
-	if order.OrderState == common.OrderStateInit {
+	if order.OrderState == 0 {
 		strategy = s.strategies["unpaid"]
 	} else {
 		strategy = s.strategies["paid"]
 	}
 
 	if err := strategy.Refund(ctx, order); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%s: %w", common.GroupBuyRefundFail.Code, err)
 	}
 
-	order.OrderState = common.OrderStateCancelled
+	order.OrderState = 2
 	return order, nil
 }

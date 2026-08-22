@@ -158,3 +158,77 @@ func (m *mockGBMQRepo) PublishRefundMessage(ctx context.Context, orderID string)
 	m.messages = append(m.messages, "refund:"+orderID)
 	return nil
 }
+
+type mockNotifyTaskRepo struct {
+	mu    sync.RWMutex
+	tasks map[string]*NotifyTask
+}
+
+func newMockNotifyTaskRepo() *mockNotifyTaskRepo {
+	return &mockNotifyTaskRepo{
+		tasks: make(map[string]*NotifyTask),
+	}
+}
+
+func (m *mockNotifyTaskRepo) CreateTask(ctx context.Context, task *NotifyTask) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.tasks[task.TaskID] = task
+	return nil
+}
+
+func (m *mockNotifyTaskRepo) GetTask(ctx context.Context, taskID string) (*NotifyTask, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	if t, ok := m.tasks[taskID]; ok {
+		return t, nil
+	}
+	return nil, fmt.Errorf("task not found")
+}
+
+func (m *mockNotifyTaskRepo) GetPendingTasks(ctx context.Context, limit int) ([]*NotifyTask, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	var tasks []*NotifyTask
+	for _, t := range m.tasks {
+		if t.NotifyStatus == 0 || t.NotifyStatus == 2 {
+			tasks = append(tasks, t)
+			if len(tasks) >= limit {
+				break
+			}
+		}
+	}
+	return tasks, nil
+}
+
+func (m *mockNotifyTaskRepo) UpdateTaskStatus(ctx context.Context, taskID string, status int32) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if t, ok := m.tasks[taskID]; ok {
+		t.NotifyStatus = status
+		return nil
+	}
+	return fmt.Errorf("task not found")
+}
+
+func (m *mockNotifyTaskRepo) UpdateTaskRetry(ctx context.Context, taskID string, retryCount int32, nextTime int64) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if t, ok := m.tasks[taskID]; ok {
+		t.RetryCount = retryCount
+		t.NextTime = nextTime
+		return nil
+	}
+	return fmt.Errorf("task not found")
+}
+
+func (m *mockNotifyTaskRepo) GetTaskByUUID(ctx context.Context, uuid string) (*NotifyTask, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	for _, t := range m.tasks {
+		if t.UUID == uuid {
+			return t, nil
+		}
+	}
+	return nil, fmt.Errorf("task not found")
+}

@@ -11,7 +11,8 @@
                                     │
                                     ▼
 ┌─────────────────────────────────────────────────────────────────────┐
-│                          Nginx / Gateway                           │
+│                          Gateway (port: 8080)                       │
+│                     统一入口，路由到各微服务                           │
 └─────────────────────────────────────────────────────────────────────┘
                                     │
         ┌───────────────────────────┼───────────────────────────┐
@@ -24,13 +25,13 @@
         │                           │                           │
         └───────────────────────────┼───────────────────────────┘
                                     │
-                ┌───────────────────┼───────────────────┐
-                │                   │                   │
-                ▼                   ▼                   ▼
-        ┌──────────────┐  ┌──────────────┐  ┌──────────────┐
-        │  MySQL 8.0   │  │  Redis 7.x   │  │  RabbitMQ    │
-        │  (数据存储)   │  │  (缓存/锁)   │  │  (消息队列)   │
-        └──────────────┘  └──────────────┘  └──────────────┘
+                ┌───────────────────┼───────────────────────────┐
+                │                   │                           │
+                ▼                   ▼                           ▼
+        ┌──────────────┐  ┌──────────────┐           ┌──────────────┐
+        │  prize:18094 │  │  MySQL 8.0   │           │  Redis 7.x   │
+        │ (公共库存服务) │  │  (数据存储)   │           │  (缓存/锁)   │
+        └──────────────┘  └──────────────┘           └──────────────┘
 ```
 
 ## 技术栈
@@ -51,7 +52,7 @@
 ### 方式一：Docker Compose一键启动（推荐）
 
 ```bash
-# 启动所有服务（MySQL + Redis + RabbitMQ + 三个微服务）
+# 启动所有服务（MySQL + Redis + RabbitMQ + 五个微服务）
 docker-compose -f deploy/docker-compose.yml up -d
 
 # 查看日志
@@ -70,24 +71,36 @@ docker-compose -f deploy/docker-compose-env.yml up -d
 # 2. 初始化数据库
 mysql -u root -proot < deploy/mysql/init.sql
 
-# 3. 启动服务（三个终端）
+# 3. 启动服务（五个终端）
 go run cmd/seckill/main.go
 go run cmd/groupbuy/main.go
 go run cmd/lottery/main.go
+go run cmd/prize/main.go
+go run cmd/gateway/main.go
 ```
 
 ### 验证服务
 
 ```bash
 # 健康检查
+curl http://localhost:8080/health
 curl http://localhost:18091/health
 curl http://localhost:18092/health
 curl http://localhost:18093/health
+curl http://localhost:18094/health
 
 # 秒杀下单
 curl -X POST http://localhost:18091/api/v1/seckill/order/create \
   -H "Content-Type: application/json" \
   -d '{"activity_id":"act_001","user_id":1001}'
+
+# 抽奖
+curl -X POST http://localhost:18093/api/v1/lottery/raffle \
+  -H "Content-Type: application/json" \
+  -d '{"activity_id":"act_001","user_id":1001}'
+
+# 通过网关访问
+curl http://localhost:8080/api/v1/gateway/proxy/?service=seckill&path=/health
 ```
 
 ## 核心设计
@@ -175,6 +188,21 @@ type PaidRefundStrategy struct{}
 | /api/v1/lottery/activity/query | GET | 查询活动 |
 | /api/v1/lottery/raffle | POST | 抽奖 |
 | /api/v1/lottery/order/query | GET | 查询中奖记录 |
+
+### 公共库存服务 (port: 18094)
+
+| 接口 | 方法 | 说明 |
+|------|------|------|
+| /api/v1/prize/stock/deduct | POST | 扣减库存 |
+| /api/v1/prize/stock/query | GET | 查询库存 |
+| /api/v1/prize/stock/restore | POST | 恢复库存 |
+
+### Gateway网关 (port: 8080)
+
+| 接口 | 方法 | 说明 |
+|------|------|------|
+| /api/v1/gateway/proxy/ | ANY | 转发到指定服务 |
+| /health | GET | 健康检查 |
 
 ## 单元测试
 

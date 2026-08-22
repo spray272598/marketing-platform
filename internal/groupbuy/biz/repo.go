@@ -28,3 +28,12 @@ type MQRepo interface {
 	PublishTeamSuccessMessage(ctx context.Context, teamID string) error
 	PublishRefundMessage(ctx context.Context, orderID string) error
 }
+
+type NotifyTaskRepo interface {
+	CreateTask(ctx context.Context, task *NotifyTask) error
+	GetTask(ctx context.Context, taskID string) (*NotifyTask, error)
+	GetPendingTasks(ctx context.Context, limit int) ([]*NotifyTask, error)
+	UpdateTaskStatus(ctx context.Context, taskID string, status int32) error
+	UpdateTaskRetry(ctx context.Context, taskID string, retryCount int32, nextTime int64) error
+	GetTaskByUUID(ctx context.Context, uuid string) (*NotifyTask, error)
+}

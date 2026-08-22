@@ -154,3 +154,18 @@ CREATE TABLE lottery_order (
     update_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     UNIQUE KEY uk_order_id (order_id)
 ) COMMENT '抽奖订单表';
+
+-- 创建奖品库
+CREATE DATABASE IF NOT EXISTS marketing_prize;
+USE marketing_prize;
+
+CREATE TABLE prize_item (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    prize_id VARCHAR(32) NOT NULL COMMENT '奖品ID',
+    prize_name VARCHAR(64) NOT NULL COMMENT '奖品名称',
+    stock INT NOT NULL DEFAULT 0 COMMENT '库存',
+    total INT NOT NULL DEFAULT 0 COMMENT '总量',
+    create_time DATETIME DEFAULT CURRENT_TIMESTAMP,
+    update_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_prize_id (prize_id)
+) COMMENT '奖品表';

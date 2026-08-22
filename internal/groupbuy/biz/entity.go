@@ -39,3 +39,26 @@ type GroupBuyTeam struct {
 	LockCount     int32  `json:"lock_count"`
 	TeamState     int32  `json:"team_state"`
 }
+
+type NotifyTask struct {
+	ID           int64  `json:"id"`
+	TaskID       string `json:"task_id"`
+	NotifyType   string `json:"notify_type"`
+	NotifyStatus int32  `json:"notify_status"`
+	NotifyURL    string `json:"notify_url"`
+	NotifyData   string `json:"notify_data"`
+	UUID         string `json:"uuid"`
+	RetryCount   int32  `json:"retry_count"`
+	MaxRetry     int32  `json:"max_retry"`
+	NextTime     int64  `json:"next_time"`
+}
+
+const (
+	NotifyStatusInit    int32 = 0
+	NotifyStatusSuccess int32 = 1
+	NotifyStatusRetry   int32 = 2
+	NotifyStatusFailed  int32 = 3
+
+	NotifyTypeHTTP = "HTTP"
+	NotifyTypeMQ   = "MQ"
+)

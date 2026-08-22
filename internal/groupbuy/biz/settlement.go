@@ -8,38 +8,42 @@ import (
 )
 
 type SettlementService struct {
-	teamRepo  TeamRepo
-	orderRepo OrderRepo
-	mqRepo    MQRepo
+	teamRepo    TeamRepo
+	orderRepo   OrderRepo
+	notifySvc   *NotifyService
 }
 
-func NewSettlementService(teamRepo TeamRepo, orderRepo OrderRepo, mqRepo MQRepo) *SettlementService {
+func NewSettlementService(teamRepo TeamRepo, orderRepo OrderRepo, notifySvc *NotifyService) *SettlementService {
 	return &SettlementService{
 		teamRepo:  teamRepo,
 		orderRepo: orderRepo,
-		mqRepo:    mqRepo,
+		notifySvc: notifySvc,
 	}
 }
 
 func (s *SettlementService) Settlement(ctx context.Context, teamID string) (*GroupBuyTeam, error) {
 	team, err := s.teamRepo.GetTeam(ctx, teamID)
 	if err != nil {
-		return nil, fmt.Errorf(common.GroupBuyTeamExpired.Code+": %w", err)
+		return nil, fmt.Errorf("%s: %w", common.GroupBuyTeamNotExist.Code, err)
 	}
 
-	// 增加完成数
 	completeCount, err := s.teamRepo.IncrementTeamComplete(ctx, teamID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%s: %w", common.GroupBuySettlementFail.Code, err)
 	}
 
 	team.CompleteCount = completeCount
 
-	// 检查是否达成目标
 	if completeCount >= team.TargetCount {
-		team.TeamState = common.TeamStateSuccess
-		// 异步通知成团成功
-		_ = s.mqRepo.PublishTeamSuccessMessage(ctx, teamID)
+		team.TeamState = 1
+
+		if err := s.notifySvc.CreateTeamSuccessNotify(ctx, teamID, map[string]interface{}{
+			"team_id":       teamID,
+			"activity_id":   team.ActivityID,
+			"complete_count": completeCount,
+		}); err != nil {
+			return nil, fmt.Errorf("create notify task failed: %w", err)
+		}
 	}
 
 	return team, nil

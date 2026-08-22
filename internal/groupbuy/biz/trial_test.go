@@ -98,7 +98,9 @@ func TestLockOrder_Success(t *testing.T) {
 func TestSettlement_Success(t *testing.T) {
 	teamRepo := newMockTeamRepo()
 	orderRepo := newMockGBOrderRepo()
+	notifyRepo := newMockNotifyTaskRepo()
 	mqRepo := newMockGBMQRepo()
+	notifySvc := NewNotifyService(notifyRepo, mqRepo)
 
 	teamRepo.teams["team_001"] = &GroupBuyTeam{
 		TeamID:        "team_001",
@@ -107,7 +109,7 @@ func TestSettlement_Success(t *testing.T) {
 		TeamState:     0,
 	}
 
-	settlementSvc := NewSettlementService(teamRepo, orderRepo, mqRepo)
+	settlementSvc := NewSettlementService(teamRepo, orderRepo, notifySvc)
 	team, err := settlementSvc.Settlement(context.Background(), "team_001")
 
 	if err != nil {
@@ -122,18 +124,24 @@ func TestSettlement_Success(t *testing.T) {
 	if team.TeamState != 1 {
 		t.Errorf("expected state 1 (success), got %d", team.TeamState)
 	}
+
+	if len(notifyRepo.tasks) != 1 {
+		t.Errorf("expected 1 notify task, got %d", len(notifyRepo.tasks))
+	}
 }
 
 func TestRefund_Success(t *testing.T) {
 	orderRepo := newMockGBOrderRepo()
+	notifyRepo := newMockNotifyTaskRepo()
 	mqRepo := newMockGBMQRepo()
+	notifySvc := NewNotifyService(notifyRepo, mqRepo)
 
 	orderRepo.orders["order_001"] = &GroupBuyOrder{
 		OrderID:    "order_001",
 		OrderState: 1,
 	}
 
-	refundSvc := NewRefundService(orderRepo, mqRepo)
+	refundSvc := NewRefundService(orderRepo, notifySvc)
 	order, err := refundSvc.Refund(context.Background(), "order_001")
 
 	if err != nil {
@@ -141,5 +149,37 @@ func TestRefund_Success(t *testing.T) {
 	}
 	if order.OrderState != 2 {
 		t.Errorf("expected state 2 (cancelled), got %d", order.OrderState)
+	}
+
+	if len(notifyRepo.tasks) != 1 {
+		t.Errorf("expected 1 notify task, got %d", len(notifyRepo.tasks))
+	}
+}
+
+func TestNotifyService_ProcessPendingTasks(t *testing.T) {
+	notifyRepo := newMockNotifyTaskRepo()
+	mqRepo := newMockGBMQRepo()
+	notifySvc := NewNotifyService(notifyRepo, mqRepo)
+
+	notifyRepo.tasks["task_001"] = &NotifyTask{
+		TaskID:       "task_001",
+		NotifyType:   NotifyTypeMQ,
+		NotifyStatus: NotifyStatusInit,
+		NotifyData:   `{"team_id":"team_001"}`,
+		RetryCount:   0,
+		MaxRetry:     3,
+	}
+
+	err := notifySvc.ProcessPendingTasks(context.Background())
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+
+	if notifyRepo.tasks["task_001"].NotifyStatus != NotifyStatusSuccess {
+		t.Errorf("expected task status success, got %d", notifyRepo.tasks["task_001"].NotifyStatus)
+	}
+
+	if len(mqRepo.messages) != 1 {
+		t.Errorf("expected 1 MQ message, got %d", len(mqRepo.messages))
 	}
 }

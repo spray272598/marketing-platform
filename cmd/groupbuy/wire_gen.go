@@ -8,6 +8,7 @@ package main
 
 import (
 	"database/sql"
+	"os"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -18,15 +19,16 @@ import (
 )
 
 func InitializeGroupBuyServer() (*server.GroupBuyServer, func(), error) {
-	// Init MySQL
-	db, err := sql.Open("mysql", "root:root@tcp(127.0.0.1:3306)/marketing_groupbuy?charset=utf8mb4&parseTime=True&loc=Local")
+	mysqlDSN := getEnv("MYSQL_DSN", "root:root@tcp(127.0.0.1:3306)/marketing_groupbuy?charset=utf8mb4&parseTime=True&loc=Local")
+	redisAddr := getEnv("REDIS_ADDR", "127.0.0.1:6379")
+
+	db, err := sql.Open("mysql", mysqlDSN)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	// Init Redis
 	rdb := redis.NewClient(&redis.Options{
-		Addr:         "127.0.0.1:6379",
+		Addr:         redisAddr,
 		ReadTimeout:  2 * time.Second,
 		WriteTimeout: 2 * time.Second,
 	})
@@ -38,11 +40,14 @@ func InitializeGroupBuyServer() (*server.GroupBuyServer, func(), error) {
 	teamRepo := data.NewTeamRepo(dataLayer)
 	redisRepo := data.NewRedisRepo(rdb)
 	mqRepo := data.NewMQRepo(nil, nil)
+	notifyRepo := data.NewNotifyTaskRepo(dataLayer)
+
+	notifySvc := biz.NewNotifyService(notifyRepo, mqRepo)
 
 	trialSvc := biz.NewTrialService(activityRepo)
 	lockSvc := biz.NewLockService(activityRepo, orderRepo, teamRepo, redisRepo)
-	settlementSvc := biz.NewSettlementService(teamRepo, orderRepo, mqRepo)
-	refundSvc := biz.NewRefundService(orderRepo, mqRepo)
+	settlementSvc := biz.NewSettlementService(teamRepo, orderRepo, notifySvc)
+	refundSvc := biz.NewRefundService(orderRepo, notifySvc)
 
 	svc := service.NewGroupBuyService(trialSvc, lockSvc, settlementSvc, refundSvc)
 	groupBuyServer := server.NewGroupBuyServer(svc)
@@ -52,4 +57,11 @@ func InitializeGroupBuyServer() (*server.GroupBuyServer, func(), error) {
 	}
 
 	return groupBuyServer, cleanup, nil
+}
+
+func getEnv(key, defaultValue string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return defaultValue
 }
