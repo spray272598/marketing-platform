@@ -260,17 +260,17 @@ func WatchConfig(ctx context.Context, onChange func(*BootstrapConfig)) {
 }
 
 func InitLogger(cfg *LogConfig) log.Logger {
-	level := log.InfoLevel
+	level := log.LevelInfo
 	switch cfg.Level {
 	case "debug":
-		level = log.DebugLevel
+		level = log.LevelDebug
 	case "warn":
-		level = log.WarnLevel
+		level = log.LevelWarn
 	case "error":
-		level = log.ErrorLevel
+		level = log.LevelError
 	}
-	return log.NewLog(
-		log.WithLevel(level),
-		log.WithFormat(cfg.Format),
-	)
+
+	logger := log.NewStdLogger(os.Stdout)
+	filter := log.NewFilter(logger, log.FilterLevel(level))
+	return filter
 }

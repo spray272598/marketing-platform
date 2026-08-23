@@ -35,8 +35,10 @@ func main() {
 	slog.SetDefault(logger.Slog())
 
 	var metrics *observability.Metrics
+	var traceCollector *observability.TraceCollector
 	if cfg.Observability.Metrics.Enabled {
 		metrics = observability.NewMetrics("groupbuy")
+		traceCollector = observability.NewTraceCollector("groupbuy", logger.Slog(), metrics)
 	}
 
 	mysqlDSN := cfg.GetMySQLDSN("root:root@tcp(127.0.0.1:3306)/marketing_groupbuy?charset=utf8mb4&parseTime=True&loc=Local")
@@ -82,6 +84,10 @@ func main() {
 	svc := service.NewGroupBuyService(trialSvc, lockSvc, settlementSvc, refundSvc)
 
 	chain := middleware.NewMiddlewareChain(logger.Slog(), metrics)
+	if traceCollector != nil {
+		chain.SetTraceCollector(traceCollector)
+	}
+	chain.DefaultChain()
 	groupbuyServer := server.NewGroupBuyServer(svc, metrics, chain)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -90,7 +96,8 @@ func main() {
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 
-	consumer := biz.NewNotifyConsumer(notifyTaskRepo)
+	consumer := biz.NewNotifyConsumer(notifyTaskRepo, mqRepo)
+	consumer.SetLogger(logger.Slog())
 	go consumer.Start(ctx)
 
 	go func() {

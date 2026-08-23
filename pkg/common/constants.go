@@ -21,4 +21,14 @@ const (
 
 	RaffleRuleBlacklist  = "rule_blacklist"
 	RaffleRuleWeight     = "rule_weight"
+
+	// 通知状态
+	NotifyStatusInit    int32 = 0
+	NotifyStatusSuccess int32 = 1
+	NotifyStatusRetry   int32 = 2
+	NotifyStatusFailed  int32 = 3
+
+	// 通知类型
+	NotifyTypeHTTP = "HTTP"
+	NotifyTypeMQ   = "MQ"
 )

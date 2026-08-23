@@ -38,12 +38,14 @@ func main() {
 	defer cancel()
 
 	go config.WatchConfig(ctx, func(cfg *config.BootstrapConfig) {
-		logger.Info("配置变更通知", slog.String("service", cfg.ServiceName))
+		logger.Info("配置变更通知", log.Fields{"service": cfg.ServiceName})
 	})
 
 	var metrics *observability.Metrics
+	var traceCollector *observability.TraceCollector
 	if cfg.Observability.Metrics.Enabled {
 		metrics = observability.NewMetrics("seckill")
+		traceCollector = observability.NewTraceCollector("seckill", logger.Slog(), metrics)
 	}
 
 	mysqlDSN := cfg.GetMySQLDSN("root:root@tcp(127.0.0.1:3306)/marketing_seckill?charset=utf8mb4&parseTime=True&loc=Local")
@@ -84,6 +86,10 @@ func main() {
 	svc := service.NewSeckillService(tradeSvc, activityRepo)
 
 	chain := middleware.NewMiddlewareChain(logger.Slog(), metrics)
+	if traceCollector != nil {
+		chain.SetTraceCollector(traceCollector)
+	}
+	chain.DefaultChain()
 	seckillServer := server.NewSeckillServer(svc, metrics, chain)
 
 	sigCh := make(chan os.Signal, 1)

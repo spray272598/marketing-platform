@@ -47,18 +47,57 @@ func (m *mockOrderRepo) GetUserActivityOrder(ctx context.Context, userID int64, 
 	return nil, nil
 }
 
-type mockRedisRepo struct{}
+type mockRedisRepo struct {
+	stocks   map[string]int32
+	userSets map[string]map[int64]bool
+}
+
+func newMockRedisRepo() *mockRedisRepo {
+	return &mockRedisRepo{
+		stocks:   make(map[string]int32),
+		userSets: make(map[string]map[int64]bool),
+	}
+}
 
 func (m *mockRedisRepo) GetStock(ctx context.Context, activityID string) (int32, error) {
+	if stock, ok := m.stocks[activityID]; ok {
+		return stock, nil
+	}
 	return 100, nil
 }
 
 func (m *mockRedisRepo) DecrStock(ctx context.Context, activityID string) (bool, error) {
+	if stock, ok := m.stocks[activityID]; ok && stock > 0 {
+		m.stocks[activityID]--
+		return true, nil
+	}
 	return true, nil
 }
 
 func (m *mockRedisRepo) SetStock(ctx context.Context, activityID string, stock int32) error {
+	m.stocks[activityID] = stock
 	return nil
+}
+
+func (m *mockRedisRepo) DecrStockWithUserCheck(ctx context.Context, activityID string, userID int64) (int64, error) {
+	// 检查用户是否已下单
+	if m.userSets[activityID] != nil && m.userSets[activityID][userID] {
+		return 2, nil
+	}
+	// 检查库存
+	if stock, ok := m.stocks[activityID]; ok && stock <= 0 {
+		return 0, nil
+	}
+	// 默认库存充足时扣减
+	if m.stocks[activityID] > 0 {
+		m.stocks[activityID]--
+	}
+	// 标记用户
+	if m.userSets[activityID] == nil {
+		m.userSets[activityID] = make(map[int64]bool)
+	}
+	m.userSets[activityID][userID] = true
+	return 1, nil
 }
 
 type mockMQRepo struct{}
@@ -86,7 +125,8 @@ func setupTestService() *SeckillService {
 		},
 	}
 	orderRepo := &mockOrderRepo{orders: make(map[string]*biz.SeckillOrder)}
-	redisRepo := &mockRedisRepo{}
+	redisRepo := newMockRedisRepo()
+	redisRepo.stocks["act_001"] = 100
 	mqRepo := &mockMQRepo{}
 	stockClient := &mockStockClient{}
 

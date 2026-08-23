@@ -33,7 +33,7 @@ func NewSeckillServer(seckillSvc *service.SeckillService, metrics *observability
 
 	var handler http.Handler = mux
 	if chain != nil {
-		handler = chain.DefaultChain().Apply(mux)
+		handler = chain.Apply(mux)
 	} else {
 		defaultChain := middleware.NewMiddlewareChain(nil, metrics).DefaultChain()
 		handler = defaultChain.Apply(mux)

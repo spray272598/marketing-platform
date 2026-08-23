@@ -22,16 +22,6 @@ type NotifyTask struct {
 	UpdateAt     string `json:"update_at"`
 }
 
-const (
-	NotifyStatusInit    int32 = 0
-	NotifyStatusSuccess int32 = 1
-	NotifyStatusRetry   int32 = 2
-	NotifyStatusFailed  int32 = 3
-
-	NotifyTypeHTTP = "HTTP"
-	NotifyTypeMQ   = "MQ"
-)
-
 var (
 	NotifyStatusInitCode    = ResponseCode{Code: "N0001", Info: "初始状态"}
 	NotifyStatusSuccessCode = ResponseCode{Code: "N0002", Info: "通知成功"}

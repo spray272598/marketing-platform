@@ -37,11 +37,13 @@ func TestCreateSeckillOrder_Success(t *testing.T) {
 	if order.UserID != 1001 {
 		t.Errorf("expected user_id 1001, got %d", order.UserID)
 	}
+	if order.OrderState != int32(0) {
+		t.Errorf("expected order_state 0, got %d", order.OrderState)
+	}
 
 	if len(orderRepo.orders) != 1 {
 		t.Errorf("expected 1 order, got %d", len(orderRepo.orders))
 	}
-
 	if len(mqRepo.messages) != 1 {
 		t.Errorf("expected 1 MQ message, got %d", len(mqRepo.messages))
 	}
@@ -56,20 +58,43 @@ func TestCreateSeckillOrder_ActivityNotFound(t *testing.T) {
 
 	tradeSvc := NewTradeService(orderRepo, redisRepo, mqRepo, activityRepo, stockClient)
 
-	activityID := "non_existent"
-	redisRepo.stocks[activityID] = 10
+	_, err := tradeSvc.CreateSeckillOrder(context.Background(), "non_existent", 1001)
+
+	if err == nil {
+		t.Error("expected error, got nil")
+	}
+}
+
+func TestCreateSeckillOrder_StockNotEnough(t *testing.T) {
+	orderRepo := newMockOrderRepo()
+	redisRepo := newMockRedisRepo()
+	mqRepo := newMockMQRepo()
+	activityRepo := newMockActivityRepo()
+	stockClient := &mockStockClient{}
+
+	activityRepo.activities["act_002"] = &SeckillActivity{
+		ActivityID: "act_002",
+		SkuID:      "sku_002",
+		TotalCount: 0,
+	}
+
+	tradeSvc := NewTradeService(orderRepo, redisRepo, mqRepo, activityRepo, stockClient)
+
+	activityID := "act_002"
+	// 库存设置为0
+	redisRepo.stocks[activityID] = 0
 
 	order, err := tradeSvc.CreateSeckillOrder(context.Background(), activityID, 1001)
 
 	if err == nil {
-		t.Error("expected error, got nil")
+		t.Error("expected error for stock not enough, got nil")
 	}
 	if order != nil {
 		t.Error("order should be nil on error")
 	}
 }
 
-func TestCreateSeckillOrder_DuplicateOrder(t *testing.T) {
+func TestCreateSeckillOrder_DuplicateOrder_Atomic(t *testing.T) {
 	orderRepo := newMockOrderRepo()
 	redisRepo := newMockRedisRepo()
 	mqRepo := newMockMQRepo()
@@ -87,18 +112,78 @@ func TestCreateSeckillOrder_DuplicateOrder(t *testing.T) {
 	activityID := "act_003"
 	redisRepo.stocks[activityID] = 10
 
+	// 第一次下单成功
 	_, err := tradeSvc.CreateSeckillOrder(context.Background(), activityID, 1001)
 	if err != nil {
 		t.Fatalf("first order failed: %v", err)
 	}
 
+	// 第二次同一用户下单应该被原子操作拦截（用户已标记）
 	order, err := tradeSvc.CreateSeckillOrder(context.Background(), activityID, 1001)
 
 	if err == nil {
 		t.Error("expected error for duplicate order, got nil")
 	}
 	if order != nil {
-		t.Error("order should be nil on error")
+		t.Error("order should be nil on duplicate")
+	}
+
+	// 验证Redis中用户已被标记
+	if !redisRepo.userSets[activityID][1001] {
+		t.Error("user should be marked as bought in Redis")
+	}
+
+	// 验证只有1个订单被创建
+	if len(orderRepo.orders) != 1 {
+		t.Errorf("expected 1 order, got %d (duplicate should not create new order)", len(orderRepo.orders))
+	}
+}
+
+func TestCreateSeckillOrder_ConcurrentStockDecrement(t *testing.T) {
+	orderRepo := newMockOrderRepo()
+	redisRepo := newMockRedisRepo()
+	mqRepo := newMockMQRepo()
+	activityRepo := newMockActivityRepo()
+	stockClient := &mockStockClient{}
+
+	activityRepo.activities["act_005"] = &SeckillActivity{
+		ActivityID: "act_005",
+		SkuID:      "sku_005",
+		TotalCount: 100,
+	}
+
+	tradeSvc := NewTradeService(orderRepo, redisRepo, mqRepo, activityRepo, stockClient)
+
+	activityID := "act_005"
+	redisRepo.stocks[activityID] = 5
+
+	done := make(chan bool, 10)
+	for i := 0; i < 10; i++ {
+		go func(userID int64) {
+			_, _ = tradeSvc.CreateSeckillOrder(context.Background(), activityID, userID)
+			done <- true
+		}(int64(2000 + i))
+	}
+
+	for i := 0; i < 10; i++ {
+		<-done
+	}
+
+	// 库存不应该为负
+	stock := redisRepo.stocks[activityID]
+	if stock < 0 {
+		t.Errorf("stock should not be negative, got %d", stock)
+	}
+
+	// 最多只能有5个成功订单（库存为5）
+	successfulOrders := 0
+	for _, o := range orderRepo.orders {
+		if o.ActivityID == activityID {
+			successfulOrders++
+		}
+	}
+	if successfulOrders > 5 {
+		t.Errorf("should have at most 5 successful orders, got %d", successfulOrders)
 	}
 }
 
@@ -147,41 +232,5 @@ func TestGetOrder_NotFound(t *testing.T) {
 	}
 	if order != nil {
 		t.Error("order should be nil on error")
-	}
-}
-
-func TestCreateSeckillOrder_ConcurrentStockDecrement(t *testing.T) {
-	orderRepo := newMockOrderRepo()
-	redisRepo := newMockRedisRepo()
-	mqRepo := newMockMQRepo()
-	activityRepo := newMockActivityRepo()
-	stockClient := &mockStockClient{}
-
-	activityRepo.activities["act_005"] = &SeckillActivity{
-		ActivityID: "act_005",
-		SkuID:      "sku_005",
-		TotalCount: 100,
-	}
-
-	tradeSvc := NewTradeService(orderRepo, redisRepo, mqRepo, activityRepo, stockClient)
-
-	activityID := "act_005"
-	redisRepo.stocks[activityID] = 5
-
-	done := make(chan bool, 10)
-	for i := 0; i < 10; i++ {
-		go func(userID int64) {
-			_, _ = tradeSvc.CreateSeckillOrder(context.Background(), activityID, userID)
-			done <- true
-		}(int64(2000 + i))
-	}
-
-	for i := 0; i < 10; i++ {
-		<-done
-	}
-
-	stock := redisRepo.stocks[activityID]
-	if stock < 0 {
-		t.Errorf("stock should not be negative, got %d", stock)
 	}
 }

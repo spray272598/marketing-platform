@@ -70,15 +70,15 @@ func (m *mockOrderRepo) GetUserActivityOrder(ctx context.Context, userID int64, 
 }
 
 type mockRedisRepo struct {
-	mu     sync.RWMutex
-	stocks map[string]int32
-	locked map[string]bool
+	mu       sync.RWMutex
+	stocks   map[string]int32
+	userSets map[string]map[int64]bool
 }
 
 func newMockRedisRepo() *mockRedisRepo {
 	return &mockRedisRepo{
-		stocks: make(map[string]int32),
-		locked: make(map[string]bool),
+		stocks:   make(map[string]int32),
+		userSets: make(map[string]map[int64]bool),
 	}
 }
 
@@ -103,6 +103,33 @@ func (m *mockRedisRepo) SetStock(ctx context.Context, activityID string, stock i
 	defer m.mu.Unlock()
 	m.stocks[activityID] = stock
 	return nil
+}
+
+func (m *mockRedisRepo) DecrStockWithUserCheck(ctx context.Context, activityID string, userID int64) (int64, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	// 1. 检查用户是否已下单
+	userKey := activityID
+	if m.userSets[userKey] == nil {
+		m.userSets[userKey] = make(map[int64]bool)
+	}
+	if m.userSets[userKey][userID] {
+		return 2, nil // 用户已下单
+	}
+
+	// 2. 检查库存
+	if stock, ok := m.stocks[activityID]; !ok || stock <= 0 {
+		return 0, nil // 库存不足
+	}
+
+	// 3. 扣减库存
+	m.stocks[activityID]--
+
+	// 4. 标记用户已下单
+	m.userSets[userKey][userID] = true
+
+	return 1, nil // 成功
 }
 
 type mockMQRepo struct {
