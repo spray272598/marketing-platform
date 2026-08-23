@@ -34,6 +34,13 @@ func main() {
 	logger := log.NewLogger(cfg.Log.Level, cfg.Log.Format)
 	slog.SetDefault(logger.Slog())
 
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go config.WatchConfig(ctx, func(cfg *config.BootstrapConfig) {
+		logger.Info("配置变更通知", slog.String("service", cfg.ServiceName))
+	})
+
 	var metrics *observability.Metrics
 	if cfg.Observability.Metrics.Enabled {
 		metrics = observability.NewMetrics("seckill")
@@ -78,9 +85,6 @@ func main() {
 
 	chain := middleware.NewMiddlewareChain(logger.Slog(), metrics)
 	seckillServer := server.NewSeckillServer(svc, metrics, chain)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
