@@ -1,0 +1,24 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: 'gateway'
+    static_configs:
+      - targets: ['gateway:8080']
+
+  - job_name: 'seckill-market'
+    static_configs:
+      - targets: ['seckill-market:18091']
+
+  - job_name: 'groupbuy-market'
+    static_configs:
+      - targets: ['groupbuy-market:18092']
+
+  - job_name: 'lottery-market'
+    static_configs:
+      - targets: ['lottery-market:18093']
+
+  - job_name: 'stock-market'
+    static_configs:
+      - targets: ['stock-market:18094']

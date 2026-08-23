@@ -1,0 +1,25 @@
+service_name: gateway
+
+server:
+  addr: ":8080"
+  timeout: 30
+
+nacos:
+  server_addr: "127.0.0.1:8848"
+  namespace: "dev"
+  group: "MARKETING_GROUP"
+  data_id: "gateway.yaml"
+
+log:
+  level: "info"
+  format: "json"
+
+observability:
+  trace:
+    enabled: true
+    endpoint: "http://localhost:11800"
+    service_name: "gateway"
+  metrics:
+    enabled: true
+    path: "/metrics"
+    port: 8080

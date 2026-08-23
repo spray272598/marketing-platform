@@ -1,60 +1,78 @@
 package log
 
 import (
-	"fmt"
+	"log/slog"
 	"os"
-	"time"
+	"strings"
 )
 
 type Logger struct {
-	level  string
-	format string
+	slog *slog.Logger
 }
 
 type Fields map[string]interface{}
 
 func NewLogger(level, format string) *Logger {
-	return &Logger{level: level, format: format}
-}
-
-func (l *Logger) shouldLog(level string) bool {
-	levels := map[string]int{"debug": 0, "info": 1, "warn": 2, "error": 3}
-	return levels[level] >= levels[l.level]
-}
-
-func (l *Logger) log(level string, msg string, fields ...Fields) {
-	if !l.shouldLog(level) {
-		return
+	var slogLevel slog.Level
+	switch strings.ToLower(level) {
+	case "debug":
+		slogLevel = slog.LevelDebug
+	case "warn":
+		slogLevel = slog.LevelWarn
+	case "error":
+		slogLevel = slog.LevelError
+	default:
+		slogLevel = slog.LevelInfo
 	}
 
-	timestamp := time.Now().Format("2006-01-02 15:04:05")
-	logLine := fmt.Sprintf("[%s] [%s] %s", timestamp, level, msg)
+	handler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+		Level: slogLevel,
+	})
 
+	return &Logger{
+		slog: slog.New(handler),
+	}
+}
+
+func (l *Logger) toSlogArgs(fields ...Fields) []any {
 	if len(fields) > 0 {
+		args := make([]any, 0)
 		for k, v := range fields[0] {
-			logLine += fmt.Sprintf(" %s=%v", k, v)
+			args = append(args, k, v)
 		}
+		return args
 	}
-
-	fmt.Fprintln(os.Stdout, logLine)
+	return nil
 }
 
 func (l *Logger) Debug(msg string, fields ...Fields) {
-	l.log("debug", msg, fields...)
+	args := l.toSlogArgs(fields...)
+	l.slog.Debug(msg, args...)
 }
 
 func (l *Logger) Info(msg string, fields ...Fields) {
-	l.log("info", msg, fields...)
+	args := l.toSlogArgs(fields...)
+	l.slog.Info(msg, args...)
 }
 
 func (l *Logger) Warn(msg string, fields ...Fields) {
-	l.log("warn", msg, fields...)
+	args := l.toSlogArgs(fields...)
+	l.slog.Warn(msg, args...)
 }
 
 func (l *Logger) Error(msg string, fields ...Fields) {
-	l.log("error", msg, fields...)
+	args := l.toSlogArgs(fields...)
+	l.slog.Error(msg, args...)
 }
 
 func (l *Logger) WithFields(fields Fields) *Logger {
-	return l
+	args := make([]any, 0)
+	for k, v := range fields {
+		args = append(args, k, v)
+	}
+	return &Logger{slog: l.slog.With(args...)}
+}
+
+func (l *Logger) Slog() *slog.Logger {
+	return l.slog
 }

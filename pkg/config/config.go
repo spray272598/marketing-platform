@@ -1,4 +1,4 @@
-package config
+﻿package config
 
 import (
 	"os"
@@ -20,10 +20,10 @@ type ServerConfig struct {
 }
 
 type DataConfig struct {
-	MySQL  MySQLConfig  `yaml:"mysql"`
-	Redis  RedisConfig  `yaml:"redis"`
+	MySQL    MySQLConfig    `yaml:"mysql"`
+	Redis    RedisConfig    `yaml:"redis"`
 	RabbitMQ RabbitMQConfig `yaml:"rabbitmq"`
-	Stock  StockConfig  `yaml:"stock"`
+	Stock    StockConfig    `yaml:"stock"`
 }
 
 type MySQLConfig struct {
@@ -137,4 +137,103 @@ func getEnvInt(key string, defaultVal int) int {
 		}
 	}
 	return defaultVal
+}
+
+type NacosConfig struct {
+	ServerAddr string `yaml:"server_addr"`
+	Namespace  string `yaml:"namespace"`
+	Group      string `yaml:"group"`
+	DataID     string `yaml:"data_id"`
+}
+
+type BootstrapConfig struct {
+	ServiceName   string              `yaml:"service_name"`
+	Nacos         NacosConfig         `yaml:"nacos"`
+	Server        ServerConfig        `yaml:"server"`
+	Data          DataConfig          `yaml:"data"`
+	Log           LogConfig           `yaml:"log"`
+	Observability ObservabilityConfig `yaml:"observability"`
+}
+
+func (b *BootstrapConfig) GetServerAddr() string {
+	if b.Server.Addr != "" {
+		return b.Server.Addr
+	}
+	return ":18091"
+}
+
+func (b *BootstrapConfig) GetMySQLDSN(defaultDSN string) string {
+	if b.Data.MySQL.DSN != "" {
+		return b.Data.MySQL.DSN
+	}
+	return defaultDSN
+}
+
+func (b *BootstrapConfig) GetRedisAddr(defaultAddr string) string {
+	if b.Data.Redis.Addr != "" {
+		return b.Data.Redis.Addr
+	}
+	return defaultAddr
+}
+
+func (b *BootstrapConfig) GetRabbitMQURL(defaultURL string) string {
+	if b.Data.RabbitMQ.URL != "" {
+		return b.Data.RabbitMQ.URL
+	}
+	return defaultURL
+}
+
+func (b *BootstrapConfig) GetStockURL(defaultURL string) string {
+	if b.Data.Stock.URL != "" {
+		return b.Data.Stock.URL
+	}
+	return defaultURL
+}
+
+func (b *BootstrapConfig) GetTimeout() int {
+	if b.Server.Timeout > 0 {
+		return b.Server.Timeout
+	}
+	return 10
+}
+
+func (b *BootstrapConfig) ApplyEnvOverrides() {
+	if v := os.Getenv("SERVER_ADDR"); v != "" {
+		b.Server.Addr = v
+	}
+	if v := os.Getenv("MYSQL_DSN"); v != "" {
+		b.Data.MySQL.DSN = v
+	}
+	if v := os.Getenv("REDIS_ADDR"); v != "" {
+		b.Data.Redis.Addr = v
+	}
+	if v := os.Getenv("REDIS_PASSWORD"); v != "" {
+		b.Data.Redis.Password = v
+	}
+	if v := os.Getenv("RABBITMQ_URL"); v != "" {
+		b.Data.RabbitMQ.URL = v
+	}
+	if v := os.Getenv("STOCK_URL"); v != "" {
+		b.Data.Stock.URL = v
+	}
+	if v := os.Getenv("LOG_LEVEL"); v != "" {
+		b.Log.Level = v
+	}
+}
+
+type ObservabilityConfig struct {
+	Trace   TraceConfig   `yaml:"trace"`
+	Metrics MetricsConfig `yaml:"metrics"`
+}
+
+type TraceConfig struct {
+	Enabled     bool   `yaml:"enabled"`
+	Endpoint    string `yaml:"endpoint"`
+	ServiceName string `yaml:"service_name"`
+}
+
+type MetricsConfig struct {
+	Enabled bool   `yaml:"enabled"`
+	Path    string `yaml:"path"`
+	Port    int    `yaml:"port"`
 }

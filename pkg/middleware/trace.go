@@ -2,31 +2,28 @@ package middleware
 
 import (
 	"context"
+	"net/http"
 	"time"
 
-	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/marketing-platform/pkg/common"
 )
 
-func TraceMiddleware() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		traceID := c.GetHeader("X-Trace-Id")
+func TraceMiddlewareHTTP(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		traceID := r.Header.Get("X-Trace-Id")
 		if traceID == "" {
 			traceID = uuid.New().String()
 		}
-		c.Set("trace_id", traceID)
-		c.Header("X-Trace-Id", traceID)
+		w.Header().Set("X-Trace-Id", traceID)
 
-		ctx := common.WithTraceID(c.Request.Context(), traceID)
-		c.Request = c.Request.WithContext(ctx)
+		ctx := common.WithTraceID(r.Context(), traceID)
+		r = r.WithContext(ctx)
 
 		start := time.Now()
-		c.Next()
+		next.ServeHTTP(w, r)
 		_ = time.Since(start)
-
-		c.Header("X-Trace-Id", traceID)
-	}
+	})
 }
 
 type traceKey struct{}

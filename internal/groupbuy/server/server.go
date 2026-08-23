@@ -7,29 +7,43 @@ import (
 	"time"
 
 	"github.com/marketing-platform/internal/groupbuy/service"
+	"github.com/marketing-platform/pkg/middleware"
+	"github.com/marketing-platform/pkg/observability"
 )
 
 type GroupBuyServer struct {
 	httpServer *http.Server
 }
 
-func NewGroupBuyServer(groupBuySvc *service.GroupBuyService) *GroupBuyServer {
+func NewGroupBuyServer(groupbuySvc *service.GroupBuyService, metrics *observability.Metrics, chain *middleware.MiddlewareChain) *GroupBuyServer {
 	mux := http.NewServeMux()
 
-	mux.HandleFunc("/api/v1/groupbuy/activity/query", groupBuySvc.QueryGroupBuyActivityHTTP)
-	mux.HandleFunc("/api/v1/groupbuy/trial", groupBuySvc.TrialGroupBuyMarketHTTP)
-	mux.HandleFunc("/api/v1/groupbuy/order/lock", groupBuySvc.LockMarketPayOrderHTTP)
-	mux.HandleFunc("/api/v1/groupbuy/order/settlement", groupBuySvc.SettlementMarketPayOrderHTTP)
-	mux.HandleFunc("/api/v1/groupbuy/order/refund", groupBuySvc.RefundMarketPayOrderHTTP)
+	mux.HandleFunc("/api/v1/groupbuy/activity/query", groupbuySvc.QueryGroupBuyActivityHTTP)
+	mux.HandleFunc("/api/v1/groupbuy/trial", groupbuySvc.TrialGroupBuyMarketHTTP)
+	mux.HandleFunc("/api/v1/groupbuy/lock", groupbuySvc.LockMarketPayOrderHTTP)
+	mux.HandleFunc("/api/v1/groupbuy/settlement", groupbuySvc.SettlementMarketPayOrderHTTP)
+	mux.HandleFunc("/api/v1/groupbuy/refund", groupbuySvc.RefundMarketPayOrderHTTP)
 
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"status":"ok","service":"groupbuy-market"}`))
+		w.Write([]byte(`{"status":"ok","service":"group-buy-market"}`))
 	})
+
+	if metrics != nil {
+		mux.Handle("/metrics", metrics.PrometheusHandler())
+	}
+
+	var handler http.Handler = mux
+	if chain != nil {
+		handler = chain.DefaultChain().Apply(mux)
+	} else {
+		defaultChain := middleware.NewMiddlewareChain(nil, metrics).DefaultChain()
+		handler = defaultChain.Apply(mux)
+	}
 
 	srv := &http.Server{
 		Addr:         ":18092",
-		Handler:      mux,
+		Handler:      handler,
 		ReadTimeout:  5 * time.Second,
 		WriteTimeout: 10 * time.Second,
 	}

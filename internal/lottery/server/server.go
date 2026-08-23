@@ -7,13 +7,15 @@ import (
 	"time"
 
 	"github.com/marketing-platform/internal/lottery/service"
+	"github.com/marketing-platform/pkg/middleware"
+	"github.com/marketing-platform/pkg/observability"
 )
 
 type LotteryServer struct {
 	httpServer *http.Server
 }
 
-func NewLotteryServer(lotterySvc *service.LotteryService) *LotteryServer {
+func NewLotteryServer(lotterySvc *service.LotteryService, metrics *observability.Metrics, chain *middleware.MiddlewareChain) *LotteryServer {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/api/v1/lottery/activity/query", lotterySvc.QueryLotteryActivityHTTP)
@@ -26,9 +28,21 @@ func NewLotteryServer(lotterySvc *service.LotteryService) *LotteryServer {
 		w.Write([]byte(`{"status":"ok","service":"lottery-market"}`))
 	})
 
+	if metrics != nil {
+		mux.Handle("/metrics", metrics.PrometheusHandler())
+	}
+
+	var handler http.Handler = mux
+	if chain != nil {
+		handler = chain.DefaultChain().Apply(mux)
+	} else {
+		defaultChain := middleware.NewMiddlewareChain(nil, metrics).DefaultChain()
+		handler = defaultChain.Apply(mux)
+	}
+
 	srv := &http.Server{
 		Addr:         ":18093",
-		Handler:      mux,
+		Handler:      handler,
 		ReadTimeout:  5 * time.Second,
 		WriteTimeout: 10 * time.Second,
 	}
