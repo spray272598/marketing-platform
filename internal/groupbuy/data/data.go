@@ -1,57 +1,113 @@
 package data
 
 import (
-	"database/sql"
+	"context"
 
+	"github.com/marketing-platform/internal/conf"
+	"github.com/marketing-platform/internal/groupbuy/biz"
+	"github.com/marketing-platform/internal/groupbuy/data/ent"
+	"github.com/marketing-platform/pkg/stockclient"
+
+	_ "github.com/go-sql-driver/mysql"
 	amqp "github.com/rabbitmq/amqp091-go"
+	"github.com/google/wire"
 	"github.com/redis/go-redis/v9"
-	"github.com/go-kratos/kratos/v2/log"
 )
 
+// ProviderSet is data providers.
+var ProviderSet = wire.NewSet(
+	NewData,
+	NewActivityRepo,
+	NewOrderRepo,
+	NewTeamRepo,
+	NewRedisRepo,
+	NewMQRepo,
+	NewNotifyTaskRepo,
+	NewStockClient,
+)
+
+// Data holds the long-lived storage clients shared by repos.
 type Data struct {
-	db      *sql.DB
+	db      *ent.Client
 	rdb     *redis.Client
 	conn    *amqp.Connection
 	channel *amqp.Channel
-	logger  *log.Helper
 }
 
-func NewData(
-	db *sql.DB,
-	rdb *redis.Client,
-	conn *amqp.Connection,
-	ch *amqp.Channel,
-	logger log.Logger,
-) *Data {
-	return &Data{
-		db:      db,
-		rdb:     rdb,
-		conn:    conn,
-		channel: ch,
-		logger:  log.NewHelper(logger),
+// NewData opens all storage clients and returns them with a cleanup function.
+func NewData(c *conf.Data) (*Data, func(), error) {
+	dc := c.GetDatabase()
+	db, err := ent.Open(dc.GetDriver(), dc.GetSource())
+	if err != nil {
+		return nil, nil, err
 	}
+	if dc.GetDebug() {
+		db = db.Debug()
+	}
+	if dc.GetAutoMigrate() {
+		if err := db.Schema.Create(context.Background()); err != nil {
+			db.Close()
+			return nil, nil, err
+		}
+	}
+
+	rc := c.GetRedis()
+	rdb := redis.NewClient(&redis.Options{
+		Addr:         rc.GetAddr(),
+		Password:     rc.GetPassword(),
+		DB:           int(rc.GetDb()),
+		ReadTimeout:  rc.GetReadTimeout().AsDuration(),
+		WriteTimeout: rc.GetWriteTimeout().AsDuration(),
+	})
+
+	var conn *amqp.Connection
+	var ch *amqp.Channel
+	rmq := c.GetRabbitmq()
+	if rmq != nil && rmq.GetUrl() != "" {
+		conn, err = amqp.Dial(rmq.GetUrl())
+		if err != nil {
+			db.Close()
+			rdb.Close()
+			return nil, nil, err
+		}
+		ch, err = conn.Channel()
+		if err != nil {
+			db.Close()
+			rdb.Close()
+			conn.Close()
+			return nil, nil, err
+		}
+	}
+
+	cleanup := func() {
+		if ch != nil {
+			ch.Close()
+		}
+		if conn != nil {
+			conn.Close()
+		}
+		rdb.Close()
+		db.Close()
+	}
+
+	return &Data{db: db, rdb: rdb, conn: conn, channel: ch}, cleanup, nil
 }
 
-func (d *Data) Close() error {
+func (d *Data) HealthCheck(ctx context.Context) map[string]bool {
+	health := make(map[string]bool)
 	if d.db != nil {
-		if err := d.db.Close(); err != nil {
-			d.logger.Errorf("failed to close db: %v", err)
-		}
+		health["mysql"] = true
 	}
 	if d.rdb != nil {
-		if err := d.rdb.Close(); err != nil {
-			d.logger.Errorf("failed to close redis: %v", err)
-		}
+		health["redis"] = d.rdb.Ping(ctx).Err() == nil
 	}
-	if d.channel != nil {
-		if err := d.channel.Close(); err != nil {
-			d.logger.Errorf("failed to close mq channel: %v", err)
-		}
+	return health
+}
+
+func NewStockClient(c *conf.Data) biz.StockClient {
+	stockURL := "http://127.0.0.1:18094"
+	if c.GetStock() != nil && c.GetStock().GetUrl() != "" {
+		stockURL = c.GetStock().GetUrl()
 	}
-	if d.conn != nil {
-		if err := d.conn.Close(); err != nil {
-			d.logger.Errorf("failed to close mq connection: %v", err)
-		}
-	}
-	return nil
+	return stockclient.NewClient(stockURL)
 }

@@ -1,31 +1,21 @@
-service_name: group-buy-market
-
 server:
-  addr: ":18092"
-  timeout: 10
+  http:
+    addr: 0.0.0.0:18092
+    timeout: 10s
 
 data:
-  mysql:
-    dsn: "root:root@tcp(127.0.0.1:3306)/marketing_groupbuy?charset=utf8mb4&parseTime=True&loc=Local"
+  database:
+    driver: mysql
+    source: ${MYSQL_DSN:root:root@tcp(127.0.0.1:3306)/marketing_groupbuy?charset=utf8mb4&parseTime=True&loc=Local}
+    debug: true
+    auto_migrate: true
   redis:
-    addr: "127.0.0.1:6379"
+    addr: ${REDIS_ADDR:127.0.0.1:6379}
     password: ""
     db: 0
+    read_timeout: 0.2s
+    write_timeout: 0.2s
   rabbitmq:
-    url: "amqp://guest:guest@127.0.0.1:5672/"
+    url: ${RABBITMQ_URL:amqp://guest:guest@127.0.0.1:5672/}
   stock:
-    url: "http://127.0.0.1:18094"
-
-log:
-  level: "info"
-  format: "json"
-
-observability:
-  trace:
-    enabled: true
-    endpoint: "http://localhost:11800"
-    service_name: "group-buy-market"
-  metrics:
-    enabled: true
-    path: "/metrics"
-    port: 18092
+    url: ${STOCK_URL:http://127.0.0.1:18094}

@@ -1,27 +1,11 @@
-service_name: stock-market
-
 server:
-  addr: ":18094"
-  timeout: 10
+  http:
+    addr: 0.0.0.0:18094
+    timeout: 10s
 
 data:
-  mysql:
-    dsn: "root:root@tcp(127.0.0.1:3306)/marketing_stock?charset=utf8mb4&parseTime=True&loc=Local"
-  redis:
-    addr: "127.0.0.1:6379"
-    password: ""
-    db: 0
-
-log:
-  level: "info"
-  format: "json"
-
-observability:
-  trace:
-    enabled: true
-    endpoint: "http://localhost:11800"
-    service_name: "stock-market"
-  metrics:
-    enabled: true
-    path: "/metrics"
-    port: 18094
+  database:
+    driver: mysql
+    source: ${MYSQL_DSN:root:root@tcp(127.0.0.1:3306)/marketing_stock?charset=utf8mb4&parseTime=True&loc=Local}
+    debug: true
+    auto_migrate: true

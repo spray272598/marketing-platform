@@ -5,40 +5,63 @@ import (
 	"fmt"
 
 	"github.com/marketing-platform/internal/groupbuy/biz"
+	"github.com/marketing-platform/internal/groupbuy/data/ent"
+	"github.com/marketing-platform/internal/groupbuy/data/ent/groupbuyteam"
 )
 
 type teamRepo struct {
-	db *Data
+	data *Data
 }
 
 func NewTeamRepo(data *Data) biz.TeamRepo {
-	return &teamRepo{db: data}
+	return &teamRepo{data: data}
 }
 
 func (r *teamRepo) CreateTeam(ctx context.Context, team *biz.GroupBuyTeam) error {
-	query := `INSERT INTO groupbuy_team (team_id, activity_id, target_count, complete_count, lock_count, team_state) VALUES (?, ?, ?, ?, ?, ?)`
-	_, err := r.db.db.ExecContext(ctx, query, team.TeamID, team.ActivityID, team.TargetCount, team.CompleteCount, team.LockCount, team.TeamState)
+	_, err := r.data.db.GroupBuyTeam.Create().
+		SetTeamID(team.TeamID).
+		SetActivityID(team.ActivityID).
+		SetTargetCount(team.TargetCount).
+		SetCompleteCount(team.CompleteCount).
+		SetLockCount(team.LockCount).
+		SetTeamState(team.TeamState).
+		Save(ctx)
 	return err
 }
 
 func (r *teamRepo) GetTeam(ctx context.Context, teamID string) (*biz.GroupBuyTeam, error) {
-	query := `SELECT id, team_id, activity_id, target_count, complete_count, lock_count, team_state FROM groupbuy_team WHERE team_id = ?`
-	team := &biz.GroupBuyTeam{}
-	err := r.db.db.QueryRowContext(ctx, query, teamID).Scan(&team.ID, &team.TeamID, &team.ActivityID, &team.TargetCount, &team.CompleteCount, &team.LockCount, &team.TeamState)
+	po, err := r.data.db.GroupBuyTeam.Query().
+		Where(groupbuyteam.TeamIDEQ(teamID)).
+		Only(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("team not found: %w", err)
+		if ent.IsNotFound(err) {
+			return nil, fmt.Errorf("team not found: %s", teamID)
+		}
+		return nil, err
 	}
-	return team, nil
+	return &biz.GroupBuyTeam{
+		TeamID:        po.TeamID,
+		ActivityID:    po.ActivityID,
+		TargetCount:   po.TargetCount,
+		CompleteCount: po.CompleteCount,
+		LockCount:     po.LockCount,
+		TeamState:     po.TeamState,
+	}, nil
 }
 
 func (r *teamRepo) IncrementTeamComplete(ctx context.Context, teamID string) (int32, error) {
-	query := `UPDATE groupbuy_team SET complete_count = complete_count + 1, update_time = NOW() WHERE team_id = ?`
-	_, err := r.db.db.ExecContext(ctx, query, teamID)
+	_, err := r.data.db.GroupBuyTeam.Update().
+		Where(groupbuyteam.TeamIDEQ(teamID)).
+		AddCompleteCount(1).
+		Save(ctx)
 	if err != nil {
 		return 0, err
 	}
-
-	var count int32
-	err = r.db.db.QueryRowContext(ctx, `SELECT complete_count FROM groupbuy_team WHERE team_id = ?`, teamID).Scan(&count)
-	return count, err
+	po, err := r.data.db.GroupBuyTeam.Query().
+		Where(groupbuyteam.TeamIDEQ(teamID)).
+		Only(ctx)
+	if err != nil {
+		return 0, err
+	}
+	return po.CompleteCount, nil
 }

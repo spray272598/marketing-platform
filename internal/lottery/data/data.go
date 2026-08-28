@@ -1,28 +1,40 @@
 package data
 
 import (
-	"database/sql"
+	"context"
 
-	"github.com/go-kratos/kratos/v2/log"
+	"github.com/marketing-platform/internal/conf"
+	"github.com/marketing-platform/internal/lottery/data/ent"
+
+	_ "github.com/go-sql-driver/mysql"
+	"github.com/google/wire"
 )
 
+var ProviderSet = wire.NewSet(NewData, NewActivityRepo, NewStrategyRepo, NewOrderRepo)
+
 type Data struct {
-	db     *sql.DB
-	logger *log.Helper
+	db *ent.Client
 }
 
-func NewData(db *sql.DB, logger log.Logger) *Data {
-	return &Data{
-		db:     db,
-		logger: log.NewHelper(logger),
+func NewData(c *conf.Data) (*Data, func(), error) {
+	dc := c.GetDatabase()
+	db, err := ent.Open(dc.GetDriver(), dc.GetSource())
+	if err != nil {
+		return nil, nil, err
 	}
-}
-
-func (d *Data) Close() error {
-	if d.db != nil {
-		if err := d.db.Close(); err != nil {
-			d.logger.Errorf("failed to close db: %v", err)
+	if dc.GetDebug() {
+		db = db.Debug()
+	}
+	if dc.GetAutoMigrate() {
+		if err := db.Schema.Create(context.Background()); err != nil {
+			db.Close()
+			return nil, nil, err
 		}
 	}
-	return nil
+	cleanup := func() { db.Close() }
+	return &Data{db: db}, cleanup, nil
+}
+
+func (d *Data) HealthCheck(ctx context.Context) map[string]bool {
+	return map[string]bool{"mysql": d.db != nil}
 }

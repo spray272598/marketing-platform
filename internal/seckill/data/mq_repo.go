@@ -14,8 +14,8 @@ type mqRepo struct {
 	channel *amqp.Channel
 }
 
-func NewMQRepo(conn *amqp.Connection, ch *amqp.Channel) biz.MQRepo {
-	return &mqRepo{conn: conn, channel: ch}
+func NewMQRepo(data *Data) biz.MQRepo {
+	return &mqRepo{conn: data.conn, channel: data.channel}
 }
 
 func (r *mqRepo) PublishOrderMessage(ctx context.Context, order *biz.SeckillOrder) error {

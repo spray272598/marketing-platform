@@ -5,35 +5,51 @@ import (
 	"fmt"
 
 	"github.com/marketing-platform/internal/seckill/biz"
+	"github.com/marketing-platform/internal/seckill/data/ent"
+	"github.com/marketing-platform/internal/seckill/data/ent/seckillactivity"
 )
 
 type activityRepo struct {
-	db *Data
+	data *Data
 }
 
 func NewActivityRepo(data *Data) biz.ActivityRepo {
-	return &activityRepo{db: data}
+	return &activityRepo{data: data}
 }
 
 func (r *activityRepo) GetActivity(ctx context.Context, activityID string) (*biz.SeckillActivity, error) {
-	query := `SELECT id, activity_id, activity_name, sku_id, total_count, limit_count, 
-			  activity_state, start_time, end_time 
-			  FROM seckill_activity WHERE activity_id = ?`
-
-	activity := &biz.SeckillActivity{}
-	err := r.db.db.QueryRowContext(ctx, query, activityID).Scan(
-		&activity.ID, &activity.ActivityID, &activity.ActivityName,
-		&activity.SkuID, &activity.TotalCount, &activity.LimitCount,
-		&activity.ActivityState, &activity.StartTime, &activity.EndTime,
-	)
+	po, err := r.data.db.SeckillActivity.Query().
+		Where(seckillactivity.ActivityIDEQ(activityID)).
+		Only(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("activity not found: %w", err)
+		if ent.IsNotFound(err) {
+			return nil, fmt.Errorf("activity not found: %s", activityID)
+		}
+		return nil, err
 	}
-	return activity, nil
+	return toBizActivity(po), nil
 }
 
 func (r *activityRepo) UpdateActivityStock(ctx context.Context, activityID string, stock int32) error {
-	query := `UPDATE seckill_activity SET total_count = ? WHERE activity_id = ?`
-	_, err := r.db.db.ExecContext(ctx, query, stock, activityID)
+	_, err := r.data.db.SeckillActivity.Update().
+		Where(seckillactivity.ActivityIDEQ(activityID)).
+		SetTotalCount(stock).
+		Save(ctx)
 	return err
+}
+
+func toBizActivity(po *ent.SeckillActivity) *biz.SeckillActivity {
+	if po == nil {
+		return nil
+	}
+	return &biz.SeckillActivity{
+		ActivityID:    po.ActivityID,
+		ActivityName:  po.ActivityName,
+		SkuID:         po.SkuID,
+		TotalCount:    po.TotalCount,
+		LimitCount:    po.LimitCount,
+		ActivityState: po.ActivityState,
+		StartTime:     po.StartTime.Format("2006-01-02 15:04:05"),
+		EndTime:       po.EndTime.Format("2006-01-02 15:04:05"),
+	}
 }

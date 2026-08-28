@@ -2,42 +2,67 @@ package data
 
 import (
 	"context"
-	"database/sql"
-	"fmt"
 
+	"github.com/marketing-platform/internal/conf"
 	"github.com/marketing-platform/internal/stock/biz"
+	"github.com/marketing-platform/internal/stock/data/ent"
+	"github.com/marketing-platform/internal/stock/data/ent/stockitem"
+
+	_ "github.com/go-sql-driver/mysql"
+	"github.com/google/wire"
 )
 
+var ProviderSet = wire.NewSet(NewData, NewStockRepo)
+
 type Data struct {
-	db *sql.DB
+	db *ent.Client
 }
 
-func NewData(db *sql.DB) *Data {
-	return &Data{db: db}
+func NewData(c *conf.Data) (*Data, func(), error) {
+	dc := c.GetDatabase()
+	db, err := ent.Open(dc.GetDriver(), dc.GetSource())
+	if err != nil {
+		return nil, nil, err
+	}
+	if dc.GetDebug() {
+		db = db.Debug()
+	}
+	if dc.GetAutoMigrate() {
+		if err := db.Schema.Create(context.Background()); err != nil {
+			db.Close()
+			return nil, nil, err
+		}
+	}
+	return &Data{db: db}, func() { db.Close() }, nil
 }
 
-type stockRepo struct {
-	data *Data
+func (d *Data) HealthCheck(ctx context.Context) map[string]bool {
+	return map[string]bool{"mysql": d.db != nil}
 }
 
-func NewStockRepo(data *Data) biz.StockRepo {
-	return &stockRepo{data: data}
-}
+type stockRepo struct{ data *Data }
+
+func NewStockRepo(data *Data) biz.StockRepo { return &stockRepo{data: data} }
 
 func (r *stockRepo) GetStock(ctx context.Context, stockKey string) (*biz.StockItem, error) {
-	query := `SELECT id, stock_key, stock_name, stock_type, stock, total FROM stock_item WHERE stock_key = ?`
-	item := &biz.StockItem{}
-	err := r.data.db.QueryRowContext(ctx, query, stockKey).Scan(
-		&item.ID, &item.StockKey, &item.StockName, &item.StockType, &item.Stock, &item.Total,
-	)
+	po, err := r.data.db.StockItem.Query().
+		Where(stockitem.StockKeyEQ(stockKey)).Only(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("stock not found: %w", err)
+		return nil, err
 	}
-	return item, nil
+	return &biz.StockItem{
+		StockKey:  po.StockKey,
+		StockName: po.StockName,
+		StockType: po.StockType,
+		Stock:     po.Stock,
+		Total:     po.Total,
+	}, nil
 }
 
 func (r *stockRepo) UpdateStock(ctx context.Context, stockKey string, stock int32) error {
-	query := `UPDATE stock_item SET stock = ? WHERE stock_key = ?`
-	_, err := r.data.db.ExecContext(ctx, query, stock, stockKey)
+	_, err := r.data.db.StockItem.Update().
+		Where(stockitem.StockKeyEQ(stockKey)).
+		SetStock(stock).
+		Save(ctx)
 	return err
 }

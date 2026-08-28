@@ -5,27 +5,27 @@ import (
 	"fmt"
 
 	"github.com/marketing-platform/internal/lottery/biz"
+	"github.com/marketing-platform/internal/lottery/data/ent"
+	"github.com/marketing-platform/internal/lottery/data/ent/lotteryactivity"
 )
 
-type activityRepo struct {
-	db *Data
-}
+type activityRepo struct{ data *Data }
 
-func NewActivityRepo(data *Data) biz.ActivityRepo {
-	return &activityRepo{db: data}
-}
+func NewActivityRepo(data *Data) biz.ActivityRepo { return &activityRepo{data: data} }
 
 func (r *activityRepo) GetActivity(ctx context.Context, activityID string) (*biz.LotteryActivity, error) {
-	query := `SELECT id, activity_id, activity_name, strategy_id, activity_state 
-			  FROM lottery_activity WHERE activity_id = ?`
-
-	activity := &biz.LotteryActivity{}
-	err := r.db.db.QueryRowContext(ctx, query, activityID).Scan(
-		&activity.ID, &activity.ActivityID, &activity.ActivityName,
-		&activity.StrategyID, &activity.ActivityState,
-	)
+	po, err := r.data.db.LotteryActivity.Query().
+		Where(lotteryactivity.ActivityIDEQ(activityID)).Only(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("activity not found: %w", err)
+		if ent.IsNotFound(err) {
+			return nil, fmt.Errorf("activity not found: %s", activityID)
+		}
+		return nil, err
 	}
-	return activity, nil
+	return &biz.LotteryActivity{
+		ActivityID:    po.ActivityID,
+		ActivityName:  po.ActivityName,
+		StrategyID:    po.StrategyID,
+		ActivityState: po.ActivityState,
+	}, nil
 }

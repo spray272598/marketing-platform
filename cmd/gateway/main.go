@@ -1,66 +1,56 @@
 package main
 
 import (
-	"context"
+	"flag"
 	"log/slog"
 	"os"
-	"os/signal"
-	"syscall"
-	"time"
 
-	"github.com/marketing-platform/internal/gateway"
-	gwserver "github.com/marketing-platform/internal/gateway/server"
-	"github.com/marketing-platform/pkg/config"
-	"github.com/marketing-platform/pkg/log"
-	"github.com/marketing-platform/pkg/observability"
+	"github.com/marketing-platform/internal/conf"
+
+	"github.com/go-kratos/kratos/v3"
+	"github.com/go-kratos/kratos/v3/config"
+	"github.com/go-kratos/kratos/v3/config/env"
+	"github.com/go-kratos/kratos/v3/config/file"
+	kratoslog "github.com/go-kratos/kratos/v3/log"
+	"github.com/go-kratos/kratos/v3/transport/http"
 )
 
+var (
+	flagconf string
+	id, _    = os.Hostname()
+)
+
+func init() {
+	flag.StringVar(&flagconf, "conf", "../../configs/gateway", "config path")
+}
+
+func newApp(logger *slog.Logger, hs *http.Server) *kratos.App {
+	return kratos.New(
+		kratos.ID(id), kratos.Name("gateway"),
+		kratos.Logger(logger), kratos.Server(hs),
+	)
+}
+
 func main() {
-	cfg, err := config.LoadConfig("gateway")
+	flag.Parse()
+	logger := kratoslog.NewLogger(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{AddSource: true, Level: slog.LevelInfo}))
+	kratoslog.SetDefault(logger)
+
+	c := config.New(config.WithSource(file.NewSource(flagconf), env.NewSource("GATEWAY")))
+	defer c.Close()
+	if err := c.Load(); err != nil {
+		panic(err)
+	}
+	var bc conf.Bootstrap
+	if err := c.Scan(&bc); err != nil {
+		panic(err)
+	}
+	app, cleanup, err := wireApp(bc.Server, bc.Data, logger)
 	if err != nil {
-		slog.Error("failed to load config", "error", err)
-		os.Exit(1)
+		panic(err)
 	}
-
-	logger := log.NewLogger(cfg.Log.Level, cfg.Log.Format)
-	slog.SetDefault(logger.Slog())
-
-	var metrics *observability.Metrics
-	if cfg.Observability.Metrics.Enabled {
-		metrics = observability.NewMetrics("gateway")
+	defer cleanup()
+	if err := app.Run(); err != nil {
+		panic(err)
 	}
-
-	gatewaySvc := gateway.NewService()
-	gatewayServer := gwserver.NewServer(gatewaySvc, metrics)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
-
-	go func() {
-		if err := gatewayServer.Run(); err != nil {
-			slog.Error("server error", "error", err)
-			cancel()
-		}
-	}()
-
-	logger.Info("Gateway started", log.Fields{"addr": ":8080"})
-
-	select {
-	case sig := <-sigCh:
-		logger.Info("Received signal, shutting down", log.Fields{"signal": sig.String()})
-	case <-ctx.Done():
-		logger.Info("Context cancelled, shutting down")
-	}
-
-	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer shutdownCancel()
-
-	if err := gatewayServer.Stop(shutdownCtx); err != nil {
-		slog.Error("Server shutdown error", "error", err)
-	}
-
-	logger.Info("Gateway stopped")
 }

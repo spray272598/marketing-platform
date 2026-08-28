@@ -6,7 +6,10 @@ import (
 
 	"github.com/marketing-platform/internal/stock/biz"
 	"github.com/marketing-platform/pkg/common"
+	"github.com/google/wire"
 )
+
+var ProviderSet = wire.NewSet(NewStockService)
 
 type StockService struct {
 	stockSvc *biz.StockService

@@ -5,43 +5,53 @@ import (
 	"fmt"
 
 	"github.com/marketing-platform/internal/groupbuy/biz"
+	"github.com/marketing-platform/internal/groupbuy/data/ent"
+	"github.com/marketing-platform/internal/groupbuy/data/ent/groupbuyactivity"
+	"github.com/marketing-platform/internal/groupbuy/data/ent/groupbuydiscount"
 )
 
 type activityRepo struct {
-	db *Data
+	data *Data
 }
 
 func NewActivityRepo(data *Data) biz.ActivityRepo {
-	return &activityRepo{db: data}
+	return &activityRepo{data: data}
 }
 
 func (r *activityRepo) GetActivity(ctx context.Context, activityID string) (*biz.GroupBuyActivity, error) {
-	query := `SELECT id, activity_id, activity_name, discount_id, group_type, 
-			  target_count, valid_time, tag_id, activity_state 
-			  FROM groupbuy_activity WHERE activity_id = ?`
-
-	activity := &biz.GroupBuyActivity{}
-	err := r.db.db.QueryRowContext(ctx, query, activityID).Scan(
-		&activity.ID, &activity.ActivityID, &activity.ActivityName,
-		&activity.DiscountID, &activity.GroupType, &activity.TargetCount,
-		&activity.ValidTime, &activity.TagID, &activity.ActivityState,
-	)
+	po, err := r.data.db.GroupBuyActivity.Query().
+		Where(groupbuyactivity.ActivityIDEQ(activityID)).
+		Only(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("activity not found: %w", err)
+		if ent.IsNotFound(err) {
+			return nil, fmt.Errorf("activity not found: %s", activityID)
+		}
+		return nil, err
 	}
-	return activity, nil
+	return &biz.GroupBuyActivity{
+		ActivityID:    po.ActivityID,
+		ActivityName:  po.ActivityName,
+		DiscountID:    po.DiscountID,
+		GroupType:     po.GroupType,
+		TargetCount:   po.TargetCount,
+		ValidTime:     po.ValidTime,
+		ActivityState: po.ActivityState,
+	}, nil
 }
 
 func (r *activityRepo) GetDiscount(ctx context.Context, discountID string) (*biz.GroupBuyDiscount, error) {
-	query := `SELECT id, discount_id, market_plan, market_expr 
-			  FROM groupbuy_discount WHERE discount_id = ?`
-
-	discount := &biz.GroupBuyDiscount{}
-	err := r.db.db.QueryRowContext(ctx, query, discountID).Scan(
-		&discount.ID, &discount.DiscountID, &discount.MarketPlan, &discount.MarketExpr,
-	)
+	po, err := r.data.db.GroupBuyDiscount.Query().
+		Where(groupbuydiscount.DiscountIDEQ(discountID)).
+		Only(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("discount not found: %w", err)
+		if ent.IsNotFound(err) {
+			return nil, fmt.Errorf("discount not found: %s", discountID)
+		}
+		return nil, err
 	}
-	return discount, nil
+	return &biz.GroupBuyDiscount{
+		DiscountID: po.DiscountID,
+		MarketPlan: po.MarketPlan,
+		MarketExpr: po.MarketExpr,
+	}, nil
 }

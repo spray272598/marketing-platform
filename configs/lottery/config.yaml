@@ -1,31 +1,11 @@
-service_name: lottery-market
-
 server:
-  addr: ":18093"
-  timeout: 10
+  http:
+    addr: 0.0.0.0:18093
+    timeout: 10s
 
 data:
-  mysql:
-    dsn: "root:root@tcp(127.0.0.1:3306)/marketing_lottery?charset=utf8mb4&parseTime=True&loc=Local"
-  redis:
-    addr: "127.0.0.1:6379"
-    password: ""
-    db: 0
-  rabbitmq:
-    url: "amqp://guest:guest@127.0.0.1:5672/"
-  stock:
-    url: "http://127.0.0.1:18094"
-
-log:
-  level: "info"
-  format: "json"
-
-observability:
-  trace:
-    enabled: true
-    endpoint: "http://localhost:11800"
-    service_name: "lottery-market"
-  metrics:
-    enabled: true
-    path: "/metrics"
-    port: 18093
+  database:
+    driver: mysql
+    source: ${MYSQL_DSN:root:root@tcp(127.0.0.1:3306)/marketing_lottery?charset=utf8mb4&parseTime=True&loc=Local}
+    debug: true
+    auto_migrate: true

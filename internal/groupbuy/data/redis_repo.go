@@ -13,8 +13,8 @@ type redisRepo struct {
 	client *redis.Client
 }
 
-func NewRedisRepo(client *redis.Client) biz.RedisRepo {
-	return &redisRepo{client: client}
+func NewRedisRepo(data *Data) biz.RedisRepo {
+	return &redisRepo{client: data.rdb}
 }
 
 func (r *redisRepo) LockOrder(ctx context.Context, orderKey string) (bool, error) {

@@ -13,8 +13,8 @@ type redisRepo struct {
 	client *redis.Client
 }
 
-func NewRedisRepo(client *redis.Client) biz.RedisRepo {
-	return &redisRepo{client: client}
+func NewRedisRepo(data *Data) biz.RedisRepo {
+	return &redisRepo{client: data.rdb}
 }
 
 func (r *redisRepo) GetStock(ctx context.Context, activityID string) (int32, error) {

@@ -1,59 +1,39 @@
 package server
 
 import (
-	"context"
-	"fmt"
-	"net/http"
-	"time"
-
+	"github.com/marketing-platform/internal/conf"
 	"github.com/marketing-platform/internal/seckill/service"
-	"github.com/marketing-platform/pkg/middleware"
-	"github.com/marketing-platform/pkg/observability"
+
+	"github.com/go-kratos/kratos/v3/middleware/recovery"
+	"github.com/go-kratos/kratos/v3/transport/http"
 )
 
-type SeckillServer struct {
-	httpServer *http.Server
-}
+// NewHTTPServer new an HTTP server.
+func NewHTTPServer(c *conf.Server, seckillSvc *service.SeckillService) *http.Server {
+	var opts = []http.ServerOption{
+		http.Middleware(
+			recovery.Recovery(),
+		),
+	}
+	if c.GetHttp().GetNetwork() != "" {
+		opts = append(opts, http.Network(c.GetHttp().GetNetwork()))
+	}
+	if c.GetHttp().GetAddr() != "" {
+		opts = append(opts, http.Address(c.GetHttp().GetAddr()))
+	}
+	if c.GetHttp().GetTimeout() != 0 {
+		opts = append(opts, http.Timeout(c.GetHttp().GetTimeout()))
+	}
+	srv := http.NewServer(opts...)
 
-func NewSeckillServer(seckillSvc *service.SeckillService, metrics *observability.Metrics, chain *middleware.MiddlewareChain) *SeckillServer {
-	mux := http.NewServeMux()
-
-	mux.HandleFunc("/api/v1/seckill/activity/query", seckillSvc.QuerySeckillActivityHTTP)
-	mux.HandleFunc("/api/v1/seckill/order/create", seckillSvc.CreateSeckillOrderHTTP)
-	mux.HandleFunc("/api/v1/seckill/order/query", seckillSvc.QuerySeckillOrderHTTP)
-
-	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+	// Register HTTP routes
+	srv.HandleFunc("/api/v1/seckill/activity/query", seckillSvc.QuerySeckillActivityHTTP)
+	srv.HandleFunc("/api/v1/seckill/order/create", seckillSvc.CreateSeckillOrderHTTP)
+	srv.HandleFunc("/api/v1/seckill/order/query", seckillSvc.QuerySeckillOrderHTTP)
+	srv.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte(`{"status":"ok","service":"seckill-market"}`))
 	})
 
-	if metrics != nil {
-		mux.Handle("/metrics", metrics.PrometheusHandler())
-	}
-
-	var handler http.Handler = mux
-	if chain != nil {
-		handler = chain.Apply(mux)
-	} else {
-		defaultChain := middleware.NewMiddlewareChain(nil, metrics).DefaultChain()
-		handler = defaultChain.Apply(mux)
-	}
-
-	srv := &http.Server{
-		Addr:         ":18091",
-		Handler:      handler,
-		ReadTimeout:  5 * time.Second,
-		WriteTimeout: 10 * time.Second,
-	}
-
-	return &SeckillServer{httpServer: srv}
-}
-
-func (s *SeckillServer) Run() error {
-	fmt.Println("Seckill server listening on :18091")
-	return s.httpServer.ListenAndServe()
-}
-
-func (s *SeckillServer) Stop(ctx context.Context) error {
-	return s.httpServer.Shutdown(ctx)
+	return srv
 }

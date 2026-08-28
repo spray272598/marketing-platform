@@ -2,20 +2,34 @@ syntax = "proto3";
 
 package seckill.v1;
 
+import "google/api/annotations.proto";
+import "google/api/field_behavior.proto";
+
 option go_package = "github.com/marketing-platform/api/seckill/v1;seckillv1";
 
-// 秒杀服务
 service SeckillService {
-  // 查询秒杀活动
-  rpc QuerySeckillActivity(QuerySeckillActivityReq) returns (QuerySeckillActivityResp);
-  // 秒杀下单
-  rpc CreateSeckillOrder(CreateSeckillOrderReq) returns (CreateSeckillOrderResp);
-  // 查询秒杀订单
-  rpc QuerySeckillOrder(QuerySeckillOrderReq) returns (QuerySeckillOrderResp);
+  rpc QuerySeckillActivity(QuerySeckillActivityReq) returns (QuerySeckillActivityResp) {
+    option (google.api.http) = {
+      get: "/api/v1/seckill/activity/query"
+    };
+  }
+
+  rpc CreateSeckillOrder(CreateSeckillOrderReq) returns (CreateSeckillOrderResp) {
+    option (google.api.http) = {
+      post: "/api/v1/seckill/order/create"
+      body: "*"
+    };
+  }
+
+  rpc QuerySeckillOrder(QuerySeckillOrderReq) returns (QuerySeckillOrderResp) {
+    option (google.api.http) = {
+      get: "/api/v1/seckill/order/query"
+    };
+  }
 }
 
 message QuerySeckillActivityReq {
-  string activity_id = 1;
+  string activity_id = 1 [(google.api.field_behavior) = REQUIRED];
 }
 
 message QuerySeckillActivityResp {
@@ -30,8 +44,8 @@ message QuerySeckillActivityResp {
 }
 
 message CreateSeckillOrderReq {
-  string activity_id = 1;
-  int64 user_id = 2;
+  string activity_id = 1 [(google.api.field_behavior) = REQUIRED];
+  int64 user_id = 2 [(google.api.field_behavior) = REQUIRED];
 }
 
 message CreateSeckillOrderResp {
@@ -42,7 +56,7 @@ message CreateSeckillOrderResp {
 }
 
 message QuerySeckillOrderReq {
-  string order_id = 1;
+  string order_id = 1 [(google.api.field_behavior) = REQUIRED];
   int64 user_id = 2;
 }
 
