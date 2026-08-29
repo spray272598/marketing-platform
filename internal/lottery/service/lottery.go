@@ -17,43 +17,41 @@ func NewLotteryService(raffleSvc *biz.RaffleService) *LotteryService {
 }
 
 func (s *LotteryService) QueryLotteryActivityHTTP(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	resp := common.Success[any](nil)
-	json.NewEncoder(w).Encode(resp)
+	common.WriteSuccess[any](w, nil)
 }
 
 func (s *LotteryService) QueryLotteryStrategyHTTP(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	resp := common.Success[any](nil)
-	json.NewEncoder(w).Encode(resp)
+	common.WriteSuccess[any](w, nil)
 }
 
 func (s *LotteryService) RaffleHTTP(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-
+	if r.Method != http.MethodPost {
+		common.WriteError(w, http.StatusMethodNotAllowed, common.ParamError)
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 4096)
 	var req struct {
 		ActivityId string `json:"activity_id"`
 		UserId     int64  `json:"user_id"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		resp := common.Fail[any]("400", "参数错误")
-		json.NewEncoder(w).Encode(resp)
+		common.WriteError(w, http.StatusBadRequest, common.ParamError)
+		return
+	}
+	if req.ActivityId == "" || req.UserId <= 0 {
+		common.WriteError(w, http.StatusBadRequest, common.ParamError)
 		return
 	}
 
 	result, err := s.raffleSvc.Raffle(r.Context(), req.ActivityId, req.UserId)
 	if err != nil {
-		resp := common.Fail[any]("500", err.Error())
-		json.NewEncoder(w).Encode(resp)
+		common.WriteBizError(w, err)
 		return
 	}
 
-	resp := common.Success(result)
-	json.NewEncoder(w).Encode(resp)
+	common.WriteSuccess(w, result)
 }
 
 func (s *LotteryService) QueryUserRaffleOrderHTTP(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	resp := common.Success[any](nil)
-	json.NewEncoder(w).Encode(resp)
+	common.WriteSuccess[any](w, nil)
 }

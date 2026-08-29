@@ -51,3 +51,24 @@ func (r *strategyRepo) GetStrategyAwards(ctx context.Context, strategyID string)
 	}
 	return awards, nil
 }
+
+// DeductAwardStock 原子扣减奖品库存：仅在当前库存 > 0 时扣减，避免超发/无限发放。
+func (r *strategyRepo) DeductAwardStock(ctx context.Context, awardID string) (bool, error) {
+	n, err := r.data.db.StrategyAward.Update().
+		Where(strategyaward.AwardIDEQ(awardID), strategyaward.AwardCountGT(0)).
+		AddAwardCount(-1).
+		Save(ctx)
+	if err != nil {
+		return false, err
+	}
+	return n > 0, nil
+}
+
+// RestoreAwardStock 回补奖品库存（下单失败补偿用）。
+func (r *strategyRepo) RestoreAwardStock(ctx context.Context, awardID string) error {
+	_, err := r.data.db.StrategyAward.Update().
+		Where(strategyaward.AwardIDEQ(awardID)).
+		AddAwardCount(1).
+		Save(ctx)
+	return err
+}

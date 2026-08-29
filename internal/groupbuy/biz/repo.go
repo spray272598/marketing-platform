@@ -20,8 +20,8 @@ type TeamRepo interface {
 }
 
 type RedisRepo interface {
-	LockOrder(ctx context.Context, orderKey string) (bool, error)
-	UnlockOrder(ctx context.Context, orderKey string) error
+	LockOrder(ctx context.Context, orderKey string, lockValue string) (bool, error)
+	UnlockOrder(ctx context.Context, orderKey string, lockValue string) error
 }
 
 type MQRepo interface {

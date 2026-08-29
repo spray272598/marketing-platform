@@ -6,6 +6,7 @@ import (
 	"math/rand"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/marketing-platform/pkg/common"
 )
 
@@ -40,42 +41,80 @@ func (s *RaffleService) Raffle(ctx context.Context, activityID string, userID in
 		return nil, fmt.Errorf(common.LotteryActivityNotExist.Code+": %w", err)
 	}
 
-	// 获取策略
-	strategy, err := s.strategyRepo.GetStrategy(ctx, activity.StrategyID)
-	if err != nil {
-		return nil, fmt.Errorf(common.LotteryStrategyNotExist.Code+": %w", err)
+	if activity.ActivityState != common.ActivityStateOpen {
+		return nil, fmt.Errorf("%s: %s", common.LotteryActivityNotExist.Code, "activity is not open")
 	}
-	_ = strategy
 
-	// 获取奖品列表
+	// 策略必须存在，否则视为活动配置错误（原先获取后直接丢弃，规则被忽略）。
+	if _, err := s.strategyRepo.GetStrategy(ctx, activity.StrategyID); err != nil {
+		return nil, fmt.Errorf("%s: %w", common.LotteryStrategyNotExist.Code, err)
+	}
+
+	drawCount, err := s.orderRepo.GetUserActivityCount(ctx, userID, activityID)
+	if err != nil {
+		return nil, fmt.Errorf("get draw count failed: %w", err)
+	}
+	if drawCount > 0 {
+		return nil, fmt.Errorf("%s: %s", common.LotteryDrawLimit.Code, common.LotteryDrawLimit.Info)
+	}
+
 	awards, err := s.strategyRepo.GetStrategyAwards(ctx, activity.StrategyID)
 	if err != nil {
 		return nil, err
 	}
+	if len(awards) == 0 {
+		return nil, fmt.Errorf("%s: no awards configured", common.LotteryAwardNotFound.Code)
+	}
 
-	// 根据概率抽奖
-	award := s.drawAward(awards)
+	// 只在仍有库存的奖品中抽奖，避免抽中已售罄的奖品。
+	available := make([]*StrategyAward, 0, len(awards))
+	for _, a := range awards {
+		if a.AwardCount > 0 {
+			available = append(available, a)
+		}
+	}
 
-	// 创建订单
+	won := false
+	var award *StrategyAward
+	if len(available) > 0 {
+		award = s.drawAward(available)
+		// 原子扣减奖品库存；若被并发抢光则返回 false，本次视为未中奖。
+		ok, err := s.strategyRepo.DeductAwardStock(ctx, award.AwardID)
+		if err != nil {
+			return nil, fmt.Errorf("deduct award stock failed: %w", err)
+		}
+		won = ok
+	}
+
 	order := &LotteryOrder{
-		OrderID:    fmt.Sprintf("lt_%d_%d", time.Now().UnixMilli(), userID),
+		OrderID:    fmt.Sprintf("lt_%s", uuid.New().String()[:12]),
 		ActivityID: activityID,
 		UserID:     userID,
-		AwardID:    award.AwardID,
-		AwardState: 1,
+		AwardState: 0,
 		AwardTime:  time.Now().Format("2006-01-02 15:04:05"),
+	}
+	if won {
+		order.AwardID = award.AwardID
+		order.AwardState = 1
 	}
 
 	if err := s.orderRepo.CreateOrder(ctx, order); err != nil {
-		return nil, err
+		if won {
+			_ = s.strategyRepo.RestoreAwardStock(ctx, award.AwardID)
+		}
+		return nil, fmt.Errorf("create order failed: %w", err)
 	}
 
-	return &RaffleResult{
-		AwardID:    award.AwardID,
-		AwardName:  award.AwardName,
+	result := &RaffleResult{
+		AwardID:    order.AwardID,
+		AwardName:  "",
 		AwardState: order.AwardState,
 		AwardTime:  order.AwardTime,
-	}, nil
+	}
+	if won {
+		result.AwardName = award.AwardName
+	}
+	return result, nil
 }
 
 func (s *RaffleService) drawAward(awards []*StrategyAward) *StrategyAward {
@@ -93,5 +132,5 @@ func (s *RaffleService) drawAward(awards []*StrategyAward) *StrategyAward {
 		}
 	}
 
-	return awards[0]
+	return awards[len(awards)-1]
 }

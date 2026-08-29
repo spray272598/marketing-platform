@@ -54,6 +54,37 @@ func (m *mockStrategyRepo) GetStrategyAwards(ctx context.Context, strategyID str
 	return nil, fmt.Errorf("awards not found")
 }
 
+func (m *mockStrategyRepo) DeductAwardStock(ctx context.Context, awardID string) (bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, list := range m.awards {
+		for _, a := range list {
+			if a.AwardID == awardID {
+				if a.AwardCount > 0 {
+					a.AwardCount--
+					return true, nil
+				}
+				return false, nil
+			}
+		}
+	}
+	return false, nil
+}
+
+func (m *mockStrategyRepo) RestoreAwardStock(ctx context.Context, awardID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, list := range m.awards {
+		for _, a := range list {
+			if a.AwardID == awardID {
+				a.AwardCount++
+				return nil
+			}
+		}
+	}
+	return nil
+}
+
 type mockLTOrderRepo struct {
 	mu     sync.RWMutex
 	orders map[string]*LotteryOrder

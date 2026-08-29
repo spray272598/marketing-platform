@@ -43,6 +43,14 @@ func (r *orderRepo) GetOrder(ctx context.Context, orderID string) (*biz.SeckillO
 	return toBizOrder(po), nil
 }
 
+func (r *orderRepo) UpdateOrderState(ctx context.Context, orderID string, state int32) error {
+	_, err := r.data.db.SeckillOrder.Update().
+		Where(seckillorder.OrderIDEQ(orderID)).
+		SetOrderState(state).
+		Save(ctx)
+	return err
+}
+
 func (r *orderRepo) GetUserActivityOrder(ctx context.Context, userID int64, activityID string) (*biz.SeckillOrder, error) {
 	po, err := r.data.db.SeckillOrder.Query().
 		Where(

@@ -79,11 +79,11 @@ func (m *mockGBTeamRepo) IncrementTeamComplete(ctx context.Context, teamID strin
 
 type mockGBRedisRepo struct{}
 
-func (m *mockGBRedisRepo) LockOrder(ctx context.Context, orderKey string) (bool, error) {
+func (m *mockGBRedisRepo) LockOrder(ctx context.Context, orderKey string, lockValue string) (bool, error) {
 	return true, nil
 }
 
-func (m *mockGBRedisRepo) UnlockOrder(ctx context.Context, orderKey string) error {
+func (m *mockGBRedisRepo) UnlockOrder(ctx context.Context, orderKey string, lockValue string) error {
 	return nil
 }
 
@@ -150,10 +150,11 @@ func setupGBTestService() *GroupBuyService {
 	activityRepo := &mockGBActivityRepo{
 		activities: map[string]*biz.GroupBuyActivity{
 			"act_001": {
-				ActivityID:   "act_001",
-				ActivityName: "test",
-				DiscountID:   "disc_001",
-				TargetCount:  2,
+				ActivityID:    "act_001",
+				ActivityName:  "test",
+				DiscountID:    "disc_001",
+				TargetCount:   2,
+				ActivityState: 1,
 			},
 		},
 		discounts: map[string]*biz.GroupBuyDiscount{
@@ -198,13 +199,13 @@ func TestTrialGroupBuyMarketHTTP_InvalidJSON(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	svc.TrialGroupBuyMarketHTTP(w, req)
-	if w.Code != http.StatusOK {
-		t.Errorf("expected status 200, got %d", w.Code)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected status 400, got %d", w.Code)
 	}
 	var resp map[string]interface{}
 	json.Unmarshal(w.Body.Bytes(), &resp)
-	if resp["code"] != "400" {
-		t.Errorf("expected code 400, got %v", resp["code"])
+	if resp["code"] != "C0001" {
+		t.Errorf("expected code C0001, got %v", resp["code"])
 	}
 }
 

@@ -3,13 +3,12 @@ package biz
 import (
 	"context"
 	"fmt"
-	"sync"
 )
 
 const (
-	StockTypeProduct = "product" // 商品库存
-	StockTypeTeam    = "team"    // 团位库存
-	StockTypePrize   = "prize"   // 奖品库存
+	StockTypeProduct = "product"
+	StockTypeTeam    = "team"
+	StockTypePrize   = "prize"
 )
 
 type StockItem struct {
@@ -24,11 +23,12 @@ type StockItem struct {
 type StockRepo interface {
 	GetStock(ctx context.Context, stockKey string) (*StockItem, error)
 	UpdateStock(ctx context.Context, stockKey string, stock int32) error
+	DeductStockAtomic(ctx context.Context, stockKey string, count int32) (bool, error)
+	RestoreStockAtomic(ctx context.Context, stockKey string, count int32) (bool, error)
 }
 
 type StockService struct {
 	stockRepo StockRepo
-	mu        sync.RWMutex
 }
 
 func NewStockService(stockRepo StockRepo) *StockService {
@@ -36,47 +36,41 @@ func NewStockService(stockRepo StockRepo) *StockService {
 }
 
 func (s *StockService) DeductStock(ctx context.Context, stockKey string, count int32) (bool, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	item, err := s.stockRepo.GetStock(ctx, stockKey)
-	if err != nil || item == nil {
-		return false, fmt.Errorf("stock not found: %s", stockKey)
+	if count <= 0 {
+		return false, fmt.Errorf("count must be positive, got %d", count)
 	}
 
-	if item.Stock < count {
-		return false, fmt.Errorf("stock not enough: %d < %d", item.Stock, count)
+	ok, err := s.stockRepo.DeductStockAtomic(ctx, stockKey, count)
+	if err != nil {
+		return false, fmt.Errorf("deduct stock failed: %w", err)
 	}
-
-	newStock := item.Stock - count
-	if err := s.stockRepo.UpdateStock(ctx, stockKey, newStock); err != nil {
-		return false, err
+	if !ok {
+		return false, fmt.Errorf("stock not enough: %s", stockKey)
 	}
-
 	return true, nil
 }
 
 func (s *StockService) GetStock(ctx context.Context, stockKey string) (int32, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
 	item, err := s.stockRepo.GetStock(ctx, stockKey)
-	if err != nil || item == nil {
+	if err != nil {
+		return 0, fmt.Errorf("get stock failed: %w", err)
+	}
+	if item == nil {
 		return 0, fmt.Errorf("stock not found: %s", stockKey)
 	}
-
 	return item.Stock, nil
 }
 
 func (s *StockService) RestoreStock(ctx context.Context, stockKey string, count int32) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	item, err := s.stockRepo.GetStock(ctx, stockKey)
-	if err != nil || item == nil {
+	if count <= 0 {
+		return fmt.Errorf("count must be positive, got %d", count)
+	}
+	ok, err := s.stockRepo.RestoreStockAtomic(ctx, stockKey, count)
+	if err != nil {
+		return fmt.Errorf("restore stock failed: %w", err)
+	}
+	if !ok {
 		return fmt.Errorf("stock not found: %s", stockKey)
 	}
-
-	newStock := item.Stock + count
-	return s.stockRepo.UpdateStock(ctx, stockKey, newStock)
+	return nil
 }

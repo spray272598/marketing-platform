@@ -36,5 +36,12 @@ func NewData(c *conf.Data) (*Data, func(), error) {
 }
 
 func (d *Data) HealthCheck(ctx context.Context) map[string]bool {
-	return map[string]bool{"mysql": d.db != nil}
+	healthy := false
+	if d.db != nil {
+		// 真正 ping 一下数据库，而不是只判断指针非空
+		if _, err := d.db.LotteryActivity.Query().Limit(1).All(ctx); err == nil {
+			healthy = true
+		}
+	}
+	return map[string]bool{"mysql": healthy}
 }

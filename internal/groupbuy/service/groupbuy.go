@@ -30,39 +30,44 @@ func NewGroupBuyService(
 }
 
 func (s *GroupBuyService) QueryGroupBuyActivityHTTP(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	resp := common.Success[any](nil)
-	json.NewEncoder(w).Encode(resp)
+	common.WriteSuccess[any](w, nil)
 }
 
 func (s *GroupBuyService) TrialGroupBuyMarketHTTP(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-
+	if r.Method != http.MethodPost {
+		common.WriteError(w, http.StatusMethodNotAllowed, common.ParamError)
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 4096)
 	var req struct {
 		ActivityId          string `json:"activity_id"`
 		UserId              int64  `json:"user_id"`
 		MarketOriginalPrice int32  `json:"market_original_price"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		resp := common.Fail[any]("400", "参数错误")
-		json.NewEncoder(w).Encode(resp)
+		common.WriteError(w, http.StatusBadRequest, common.ParamError)
+		return
+	}
+	if req.ActivityId == "" || req.UserId <= 0 {
+		common.WriteError(w, http.StatusBadRequest, common.ParamError)
 		return
 	}
 
 	result, err := s.trialSvc.TrialMarket(r.Context(), req.ActivityId, req.MarketOriginalPrice)
 	if err != nil {
-		resp := common.Fail[any]("500", err.Error())
-		json.NewEncoder(w).Encode(resp)
+		common.WriteBizError(w, err)
 		return
 	}
 
-	resp := common.Success(result)
-	json.NewEncoder(w).Encode(resp)
+	common.WriteSuccess(w, result)
 }
 
 func (s *GroupBuyService) LockMarketPayOrderHTTP(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-
+	if r.Method != http.MethodPost {
+		common.WriteError(w, http.StatusMethodNotAllowed, common.ParamError)
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 4096)
 	var req struct {
 		ActivityId string `json:"activity_id"`
 		UserId     int64  `json:"user_id"`
@@ -70,64 +75,73 @@ func (s *GroupBuyService) LockMarketPayOrderHTTP(w http.ResponseWriter, r *http.
 		Source     string `json:"source"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		resp := common.Fail[any]("400", "参数错误")
-		json.NewEncoder(w).Encode(resp)
+		common.WriteError(w, http.StatusBadRequest, common.ParamError)
+		return
+	}
+	if req.ActivityId == "" || req.UserId <= 0 {
+		common.WriteError(w, http.StatusBadRequest, common.ParamError)
 		return
 	}
 
 	order, err := s.lockSvc.LockOrder(r.Context(), req.ActivityId, req.UserId, req.Channel, req.Source)
 	if err != nil {
-		resp := common.Fail[any]("500", err.Error())
-		json.NewEncoder(w).Encode(resp)
+		common.WriteBizError(w, err)
 		return
 	}
 
-	resp := common.Success(order)
-	json.NewEncoder(w).Encode(resp)
+	common.WriteSuccess(w, order)
 }
 
 func (s *GroupBuyService) SettlementMarketPayOrderHTTP(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-
+	if r.Method != http.MethodPost {
+		common.WriteError(w, http.StatusMethodNotAllowed, common.ParamError)
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 4096)
 	var req struct {
 		TeamId string `json:"team_id"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		resp := common.Fail[any]("400", "参数错误")
-		json.NewEncoder(w).Encode(resp)
+		common.WriteError(w, http.StatusBadRequest, common.ParamError)
+		return
+	}
+	if req.TeamId == "" {
+		common.WriteError(w, http.StatusBadRequest, common.ParamError)
 		return
 	}
 
 	team, err := s.settlementSvc.Settlement(r.Context(), req.TeamId)
 	if err != nil {
-		resp := common.Fail[any]("500", err.Error())
-		json.NewEncoder(w).Encode(resp)
+		common.WriteBizError(w, err)
 		return
 	}
 
-	resp := common.Success(team)
-	json.NewEncoder(w).Encode(resp)
+	common.WriteSuccess(w, team)
 }
 
 func (s *GroupBuyService) RefundMarketPayOrderHTTP(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-
+	if r.Method != http.MethodPost {
+		common.WriteError(w, http.StatusMethodNotAllowed, common.ParamError)
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 4096)
 	var req struct {
 		OrderId string `json:"order_id"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		resp := common.Fail[any]("400", "参数错误")
-		json.NewEncoder(w).Encode(resp)
+		common.WriteError(w, http.StatusBadRequest, common.ParamError)
+		return
+	}
+	if req.OrderId == "" {
+		common.WriteError(w, http.StatusBadRequest, common.ParamError)
 		return
 	}
 
 	order, err := s.refundSvc.Refund(r.Context(), req.OrderId)
 	if err != nil {
-		resp := common.Fail[any]("500", err.Error())
-		json.NewEncoder(w).Encode(resp)
+		common.WriteBizError(w, err)
 		return
 	}
 
-	resp := common.Success(order)
-	json.NewEncoder(w).Encode(resp)
+	common.WriteSuccess(w, order)
 }

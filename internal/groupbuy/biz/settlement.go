@@ -34,6 +34,10 @@ func (s *SettlementService) Settlement(ctx context.Context, teamID string) (*Gro
 		return nil, fmt.Errorf("%s: %w", common.GroupBuyTeamNotExist.Code, err)
 	}
 
+	if team.TeamState == common.TeamStateSuccess {
+		return team, nil
+	}
+
 	stockKey := fmt.Sprintf("team:%s", teamID)
 	if err := s.stockClient.DeductStock(ctx, stockKey, 1); err != nil {
 		return nil, fmt.Errorf("%s: %w", common.GroupBuySettlementFail.Code, err)
@@ -41,13 +45,14 @@ func (s *SettlementService) Settlement(ctx context.Context, teamID string) (*Gro
 
 	completeCount, err := s.teamRepo.IncrementTeamComplete(ctx, teamID)
 	if err != nil {
+		_ = s.stockClient.RestoreStock(ctx, stockKey, 1)
 		return nil, fmt.Errorf("%s: %w", common.GroupBuySettlementFail.Code, err)
 	}
 
 	team.CompleteCount = completeCount
 
 	if completeCount >= team.TargetCount {
-		team.TeamState = 1
+		team.TeamState = common.TeamStateSuccess
 
 		if err := s.notifySvc.CreateTeamSuccessNotify(ctx, teamID, map[string]interface{}{
 			"team_id":        teamID,

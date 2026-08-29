@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/marketing-platform/pkg/common"
 )
 
@@ -35,16 +36,21 @@ func (s *LockService) LockOrder(ctx context.Context, activityID string, userID i
 		return nil, fmt.Errorf(common.GroupBuyActivityNotExist.Code+": %w", err)
 	}
 
+	if activity.ActivityState != common.ActivityStateOpen {
+		return nil, fmt.Errorf("%s: activity is not open", common.GroupBuyActivityNotExist.Code)
+	}
+
 	lockKey := fmt.Sprintf("groupbuy:lock:%d:%s", userID, activityID)
-	locked, err := s.redisRepo.LockOrder(ctx, lockKey)
+	lockValue := uuid.New().String()
+	locked, err := s.redisRepo.LockOrder(ctx, lockKey, lockValue)
 	if err != nil || !locked {
 		return nil, fmt.Errorf("lock failed")
 	}
-	defer s.redisRepo.UnlockOrder(ctx, lockKey)
+	defer s.redisRepo.UnlockOrder(ctx, lockKey, lockValue)
 
 	order := &GroupBuyOrder{
-		OrderID:    fmt.Sprintf("gb_%d_%d", time.Now().UnixMilli(), userID),
-		TeamID:     fmt.Sprintf("team_%s_%d", activity.ActivityID, time.Now().UnixMilli()),
+		OrderID:    fmt.Sprintf("gb_%s", uuid.New().String()[:12]),
+		TeamID:     fmt.Sprintf("team_%s", uuid.New().String()[:12]),
 		UserID:     userID,
 		ActivityID: activity.ActivityID,
 		BizID:      fmt.Sprintf("%d_%s", userID, activity.ActivityID),
@@ -53,7 +59,7 @@ func (s *LockService) LockOrder(ctx context.Context, activityID string, userID i
 	}
 
 	if err := s.orderRepo.CreateOrder(ctx, order); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("create order failed: %w", err)
 	}
 
 	team := &GroupBuyTeam{
@@ -64,7 +70,10 @@ func (s *LockService) LockOrder(ctx context.Context, activityID string, userID i
 		LockCount:     1,
 		TeamState:     common.TeamStateBuilding,
 	}
-	_ = s.teamRepo.CreateTeam(ctx, team)
+	if err := s.teamRepo.CreateTeam(ctx, team); err != nil {
+		_ = s.orderRepo.UpdateOrderState(ctx, order.OrderID, common.OrderStateCancelled)
+		return nil, fmt.Errorf("create team failed: %w", err)
+	}
 
 	return order, nil
 }

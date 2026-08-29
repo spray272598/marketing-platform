@@ -11,8 +11,9 @@ func TestRaffle_Success(t *testing.T) {
 	orderRepo := newMockLTOrderRepo()
 
 	activityRepo.activities["act_001"] = &LotteryActivity{
-		ActivityID: "act_001",
-		StrategyID: "str_001",
+		ActivityID:    "act_001",
+		StrategyID:    "str_001",
+		ActivityState: 1,
 	}
 
 	strategyRepo.strategies["str_001"] = &LotteryStrategy{
@@ -20,9 +21,9 @@ func TestRaffle_Success(t *testing.T) {
 	}
 
 	strategyRepo.awards["str_001"] = []*StrategyAward{
-		{AwardID: "award_001", AwardName: "一等奖", AwardRate: 0.1},
-		{AwardID: "award_002", AwardName: "二等奖", AwardRate: 0.3},
-		{AwardID: "award_003", AwardName: "三等奖", AwardRate: 0.6},
+		{AwardID: "award_001", AwardName: "一等奖", AwardRate: 0.1, AwardCount: 100},
+		{AwardID: "award_002", AwardName: "二等奖", AwardRate: 0.3, AwardCount: 100},
+		{AwardID: "award_003", AwardName: "三等奖", AwardRate: 0.6, AwardCount: 100},
 	}
 
 	raffleSvc := NewRaffleService(activityRepo, strategyRepo, orderRepo)
@@ -58,14 +59,15 @@ func TestRaffle_ActivityNotFound(t *testing.T) {
 	}
 }
 
-func TestRaffle_MultipleDraws(t *testing.T) {
+func TestRaffle_DrawLimitOnce(t *testing.T) {
 	activityRepo := newMockLTActivityRepo()
 	strategyRepo := newMockStrategyRepo()
 	orderRepo := newMockLTOrderRepo()
 
 	activityRepo.activities["act_002"] = &LotteryActivity{
-		ActivityID: "act_002",
-		StrategyID: "str_002",
+		ActivityID:    "act_002",
+		StrategyID:    "str_002",
+		ActivityState: 1,
 	}
 
 	strategyRepo.strategies["str_002"] = &LotteryStrategy{
@@ -73,27 +75,26 @@ func TestRaffle_MultipleDraws(t *testing.T) {
 	}
 
 	strategyRepo.awards["str_002"] = []*StrategyAward{
-		{AwardID: "award_010", AwardName: "大奖", AwardRate: 0.01},
-		{AwardID: "award_011", AwardName: "小奖", AwardRate: 0.99},
+		{AwardID: "award_010", AwardName: "大奖", AwardRate: 0.01, AwardCount: 100},
+		{AwardID: "award_011", AwardName: "小奖", AwardRate: 0.99, AwardCount: 100},
 	}
 
 	raffleSvc := NewRaffleService(activityRepo, strategyRepo, orderRepo)
 
-	// Draw 100 times
-	for i := 0; i < 100; i++ {
-		result, err := raffleSvc.Raffle(context.Background(), "act_002", 1001)
-		if err != nil {
-			t.Errorf("draw %d unexpected error: %v", i, err)
-		}
-		if result == nil {
-			t.Errorf("draw %d result should not be nil", i)
-		}
+	// 第一次抽奖应成功
+	if _, err := raffleSvc.Raffle(context.Background(), "act_002", 1001); err != nil {
+		t.Fatalf("first draw unexpected error: %v", err)
 	}
 
-	// Verify order count
+	// 同一用户第二次抽奖应被限流
+	if _, err := raffleSvc.Raffle(context.Background(), "act_002", 1001); err == nil {
+		t.Error("expected draw-limit error on second draw, got nil")
+	}
+
+	// 验证该用户仅产生 1 条抽奖记录
 	count, _ := orderRepo.GetUserActivityCount(context.Background(), 1001, "act_002")
-	if count != 100 {
-		t.Errorf("expected 100 orders, got %d", count)
+	if count != 1 {
+		t.Errorf("expected 1 order, got %d", count)
 	}
 }
 
@@ -103,8 +104,9 @@ func TestRaffle_DifferentUsers(t *testing.T) {
 	orderRepo := newMockLTOrderRepo()
 
 	activityRepo.activities["act_003"] = &LotteryActivity{
-		ActivityID: "act_003",
-		StrategyID: "str_003",
+		ActivityID:    "act_003",
+		StrategyID:    "str_003",
+		ActivityState: 1,
 	}
 
 	strategyRepo.strategies["str_003"] = &LotteryStrategy{

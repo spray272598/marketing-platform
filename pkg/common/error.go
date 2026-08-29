@@ -1,5 +1,10 @@
 package common
 
+import (
+	"net/http"
+	"strings"
+)
+
 var (
 	SuccessCode = ResponseCode{Code: "0000", Info: "成功"}
 	FailCode    = ResponseCode{Code: "0001", Info: "失败"}
@@ -56,4 +61,91 @@ type ResponseCode struct {
 
 func (r ResponseCode) Error() string {
 	return r.Code + ": " + r.Info
+}
+
+// codeRegistry 把业务错误码映射回安全的展示文案，避免把内部错误细节泄露给客户端。
+var codeRegistry = map[string]ResponseCode{
+	SuccessCode.Code:               SuccessCode,
+	FailCode.Code:                  FailCode,
+	ParamError.Code:                ParamError,
+	NotFoundError.Code:             NotFoundError,
+	Unauthorized.Code:             Unauthorized,
+	Forbidden.Code:                Forbidden,
+	InternalError.Code:            InternalError,
+	RateLimitError.Code:           RateLimitError,
+	LockFailError.Code:            LockFailError,
+	SeckillActivityNotExist.Code:  SeckillActivityNotExist,
+	SeckillStockNotEnough.Code:    SeckillStockNotEnough,
+	SeckillOrderDuplicate.Code:    SeckillOrderDuplicate,
+	SeckillActivityClosed.Code:    SeckillActivityClosed,
+	SeckillOrderNotFound.Code:     SeckillOrderNotFound,
+	GroupBuyActivityNotExist.Code: GroupBuyActivityNotExist,
+	GroupBuyOrderNotExist.Code:    GroupBuyOrderNotExist,
+	GroupBuyTeamFull.Code:         GroupBuyTeamFull,
+	GroupBuyTeamExpired.Code:      GroupBuyTeamExpired,
+	GroupBuyDiscountNotExist.Code: GroupBuyDiscountNotExist,
+	GroupBuyTrialFail.Code:        GroupBuyTrialFail,
+	GroupBuyLockFail.Code:         GroupBuyLockFail,
+	GroupBuySettlementFail.Code:   GroupBuySettlementFail,
+	GroupBuyRefundFail.Code:       GroupBuyRefundFail,
+	GroupBuyTeamNotExist.Code:     GroupBuyTeamNotExist,
+	GroupBuyOrderStateInvalid.Code: GroupBuyOrderStateInvalid,
+	LotteryActivityNotExist.Code:   LotteryActivityNotExist,
+	LotteryStrategyNotExist.Code:   LotteryStrategyNotExist,
+	LotteryDrawLimit.Code:          LotteryDrawLimit,
+	LotteryAwardNotFound.Code:      LotteryAwardNotFound,
+	MQPublishFail.Code:             MQPublishFail,
+	MQConsumeFail.Code:             MQConsumeFail,
+	NotifyTaskNotExist.Code:        NotifyTaskNotExist,
+	NotifyTaskFail.Code:            NotifyTaskFail,
+	NotifyTaskRetryLimit.Code:      NotifyTaskRetryLimit,
+}
+
+// HTTPStatusForCode 将业务错误码映射为合适的 HTTP 状态码。
+// 通用基础设施类（内部错误、MQ、通知）归为 5xx；
+// 参数/鉴权/业务校验与冲突（S/G/L 各码）归为 4xx。
+func HTTPStatusForCode(code string) int {
+	switch code {
+	case InternalError.Code, MQPublishFail.Code, MQConsumeFail.Code,
+		NotifyTaskFail.Code, NotifyTaskRetryLimit.Code, NotifyTaskNotExist.Code:
+		return http.StatusInternalServerError
+	case RateLimitError.Code:
+		return http.StatusTooManyRequests
+	case Unauthorized.Code:
+		return http.StatusUnauthorized
+	case Forbidden.Code:
+		return http.StatusForbidden
+	case NotFoundError.Code,
+		SeckillActivityNotExist.Code, SeckillOrderNotFound.Code,
+		GroupBuyActivityNotExist.Code, GroupBuyOrderNotExist.Code, GroupBuyTeamNotExist.Code,
+		LotteryActivityNotExist.Code, LotteryStrategyNotExist.Code, LotteryAwardNotFound.Code:
+		return http.StatusNotFound
+	case ParamError.Code, LockFailError.Code:
+		return http.StatusBadRequest
+	default:
+		// 秒杀/拼团/抽奖等业务码属于客户端可预期的校验/冲突，返回 4xx
+		return http.StatusBadRequest
+	}
+}
+
+// WriteBizError 把业务错误安全地写回 HTTP 响应：
+//   - 显式设置正确的 HTTP 状态码（不再一律 200），便于监控识别失败；
+//   - 只返回与错误码对应的安全文案，绝不把 err.Error() 的内部细节泄露给客户端。
+func WriteBizError(w http.ResponseWriter, err error) {
+	code, info, status := resolveBizError(err)
+	WriteJSON(w, status, Fail[any](code, info))
+}
+
+func resolveBizError(err error) (string, string, int) {
+	if err == nil {
+		return InternalError.Code, InternalError.Info, http.StatusInternalServerError
+	}
+	msg := err.Error()
+	// 业务错误形如 "<CODE>: <信息>"，取前缀 CODE 反查安全文案。
+	if idx := strings.Index(msg, ": "); idx > 0 {
+		if rc, ok := codeRegistry[msg[:idx]]; ok {
+			return rc.Code, rc.Info, HTTPStatusForCode(rc.Code)
+		}
+	}
+	return InternalError.Code, InternalError.Info, http.StatusInternalServerError
 }

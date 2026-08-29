@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/marketing-platform/internal/seckill/biz"
+	"github.com/marketing-platform/pkg/common"
 )
 
 type mockActivityRepo struct {
@@ -20,7 +21,7 @@ func (m *mockActivityRepo) GetActivity(ctx context.Context, activityID string) (
 	if a, ok := m.activities[activityID]; ok {
 		return a, nil
 	}
-	return nil, fmt.Errorf("activity not found")
+	return nil, fmt.Errorf("%s: %s", common.SeckillActivityNotExist.Code, common.SeckillActivityNotExist.Info)
 }
 
 func (m *mockActivityRepo) UpdateActivityStock(ctx context.Context, activityID string, stock int32) error {
@@ -45,6 +46,13 @@ func (m *mockOrderRepo) GetOrder(ctx context.Context, orderID string) (*biz.Seck
 
 func (m *mockOrderRepo) GetUserActivityOrder(ctx context.Context, userID int64, activityID string) (*biz.SeckillOrder, error) {
 	return nil, nil
+}
+
+func (m *mockOrderRepo) UpdateOrderState(ctx context.Context, orderID string, state int32) error {
+	if o, ok := m.orders[orderID]; ok {
+		o.OrderState = state
+	}
+	return nil
 }
 
 type mockRedisRepo struct {
@@ -79,7 +87,7 @@ func (m *mockRedisRepo) SetStock(ctx context.Context, activityID string, stock i
 	return nil
 }
 
-func (m *mockRedisRepo) DecrStockWithUserCheck(ctx context.Context, activityID string, userID int64) (int64, error) {
+func (m *mockRedisRepo) DecrStockWithUserCheck(ctx context.Context, activityID string, userID int64, limit int32) (int64, error) {
 	// 检查用户是否已下单
 	if m.userSets[activityID] != nil && m.userSets[activityID][userID] {
 		return 2, nil
@@ -100,6 +108,11 @@ func (m *mockRedisRepo) DecrStockWithUserCheck(ctx context.Context, activityID s
 	return 1, nil
 }
 
+func (m *mockRedisRepo) IncrStock(ctx context.Context, activityID string, count int32) error {
+	m.stocks[activityID] += count
+	return nil
+}
+
 type mockMQRepo struct{}
 
 func (m *mockMQRepo) PublishOrderMessage(ctx context.Context, order *biz.SeckillOrder) error {
@@ -112,15 +125,22 @@ func (m *mockStockClient) DeductStock(ctx context.Context, stockKey string, coun
 	return nil
 }
 
+func (m *mockStockClient) RestoreStock(ctx context.Context, stockKey string, count int32) error {
+	return nil
+}
+
 func setupTestService() *SeckillService {
 	activityRepo := &mockActivityRepo{
 		activities: map[string]*biz.SeckillActivity{
 			"act_001": {
-				ActivityID:   "act_001",
-				ActivityName: "测试秒杀活动",
-				SkuID:        "sku_001",
-				TotalCount:   100,
-				LimitCount:   1,
+				ActivityID:    "act_001",
+				ActivityName:  "测试秒杀活动",
+				SkuID:         "sku_001",
+				TotalCount:    100,
+				LimitCount:    1,
+				ActivityState: 1,
+				StartTime:     "2020-01-01 00:00:00",
+				EndTime:       "2030-01-01 00:00:00",
 			},
 		},
 	}
@@ -161,14 +181,14 @@ func TestQuerySeckillActivityHTTP_NotFound(t *testing.T) {
 
 	svc.QuerySeckillActivityHTTP(w, req)
 
-	if w.Code != http.StatusOK {
-		t.Errorf("expected status 200, got %d", w.Code)
+	if w.Code != http.StatusNotFound {
+		t.Errorf("expected status 404, got %d", w.Code)
 	}
 
 	var resp map[string]interface{}
 	json.Unmarshal(w.Body.Bytes(), &resp)
-	if resp["code"] != "404" {
-		t.Errorf("expected code 404, got %v", resp["code"])
+	if resp["code"] != common.SeckillActivityNotExist.Code {
+		t.Errorf("expected code %s, got %v", common.SeckillActivityNotExist.Code, resp["code"])
 	}
 }
 
@@ -202,14 +222,14 @@ func TestCreateSeckillOrderHTTP_InvalidJSON(t *testing.T) {
 
 	svc.CreateSeckillOrderHTTP(w, req)
 
-	if w.Code != http.StatusOK {
-		t.Errorf("expected status 200, got %d", w.Code)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected status 400, got %d", w.Code)
 	}
 
 	var resp map[string]interface{}
 	json.Unmarshal(w.Body.Bytes(), &resp)
-	if resp["code"] != "400" {
-		t.Errorf("expected code 400, got %v", resp["code"])
+	if resp["code"] != "C0001" {
+		t.Errorf("expected code C0001, got %v", resp["code"])
 	}
 }
 
@@ -234,13 +254,13 @@ func TestQuerySeckillOrderHTTP_MissingOrderID(t *testing.T) {
 
 	svc.QuerySeckillOrderHTTP(w, req)
 
-	if w.Code != http.StatusOK {
-		t.Errorf("expected status 200, got %d", w.Code)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected status 400, got %d", w.Code)
 	}
 
 	var resp map[string]interface{}
 	json.Unmarshal(w.Body.Bytes(), &resp)
-	if resp["code"] != "400" {
-		t.Errorf("expected code 400, got %v", resp["code"])
+	if resp["code"] != "C0001" {
+		t.Errorf("expected code C0001, got %v", resp["code"])
 	}
 }

@@ -71,58 +71,63 @@ func (s *SeckillService) QuerySeckillOrder(ctx context.Context, req *v1.QuerySec
 
 // HTTP handler wrappers for backward compatibility with existing gateway
 func (s *SeckillService) QuerySeckillActivityHTTP(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
+	if r.Method != http.MethodGet {
+		common.WriteError(w, http.StatusMethodNotAllowed, common.ParamError)
+		return
+	}
 	activityID := r.URL.Query().Get("activity_id")
 	if activityID == "" {
-		resp := common.Fail[any]("400", "activity_id is required")
-		json.NewEncoder(w).Encode(resp)
+		common.WriteError(w, http.StatusBadRequest, common.ParamError)
 		return
 	}
 	activity, err := s.activityRepo.GetActivity(r.Context(), activityID)
 	if err != nil {
-		resp := common.Fail[any]("404", "activity not found")
-		json.NewEncoder(w).Encode(resp)
+		common.WriteBizError(w, err)
 		return
 	}
-	resp := common.Success(activity)
-	json.NewEncoder(w).Encode(resp)
+	common.WriteSuccess(w, activity)
 }
 
 func (s *SeckillService) CreateSeckillOrderHTTP(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
+	if r.Method != http.MethodPost {
+		common.WriteError(w, http.StatusMethodNotAllowed, common.ParamError)
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 4096)
 	var req struct {
 		ActivityId string `json:"activity_id"`
 		UserId     int64  `json:"user_id"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		resp := common.Fail[any]("400", "参数错误")
-		json.NewEncoder(w).Encode(resp)
+		common.WriteError(w, http.StatusBadRequest, common.ParamError)
+		return
+	}
+	if req.ActivityId == "" || req.UserId <= 0 {
+		common.WriteError(w, http.StatusBadRequest, common.ParamError)
 		return
 	}
 	order, err := s.tradeSvc.CreateSeckillOrder(r.Context(), req.ActivityId, req.UserId)
 	if err != nil {
-		resp := common.Fail[any]("500", err.Error())
-		json.NewEncoder(w).Encode(resp)
+		common.WriteBizError(w, err)
 		return
 	}
-	resp := common.Success(order)
-	json.NewEncoder(w).Encode(resp)
+	common.WriteSuccess(w, order)
 }
 
 func (s *SeckillService) QuerySeckillOrderHTTP(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
+	if r.Method != http.MethodGet {
+		common.WriteError(w, http.StatusMethodNotAllowed, common.ParamError)
+		return
+	}
 	orderID := r.URL.Query().Get("order_id")
 	if orderID == "" {
-		resp := common.Fail[any]("400", "order_id is required")
-		json.NewEncoder(w).Encode(resp)
+		common.WriteError(w, http.StatusBadRequest, common.ParamError)
 		return
 	}
 	order, err := s.tradeSvc.GetOrder(r.Context(), orderID)
 	if err != nil {
-		resp := common.Fail[any]("404", "order not found")
-		json.NewEncoder(w).Encode(resp)
+		common.WriteBizError(w, err)
 		return
 	}
-	resp := common.Success(order)
-	json.NewEncoder(w).Encode(resp)
+	common.WriteSuccess(w, order)
 }

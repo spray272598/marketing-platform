@@ -41,6 +41,33 @@ func (m *mockLStrategyRepo) GetStrategyAwards(ctx context.Context, strategyID st
 	return nil, nil
 }
 
+func (m *mockLStrategyRepo) DeductAwardStock(ctx context.Context, awardID string) (bool, error) {
+	for _, list := range m.awards {
+		for _, a := range list {
+			if a.AwardID == awardID {
+				if a.AwardCount > 0 {
+					a.AwardCount--
+					return true, nil
+				}
+				return false, nil
+			}
+		}
+	}
+	return false, nil
+}
+
+func (m *mockLStrategyRepo) RestoreAwardStock(ctx context.Context, awardID string) error {
+	for _, list := range m.awards {
+		for _, a := range list {
+			if a.AwardID == awardID {
+				a.AwardCount++
+				return nil
+			}
+		}
+	}
+	return nil
+}
+
 type mockLOrderRepo struct {
 	orders map[string]*biz.LotteryOrder
 }
@@ -58,9 +85,10 @@ func setupLTestService() *LotteryService {
 	activityRepo := &mockLActivityRepo{
 		activities: map[string]*biz.LotteryActivity{
 			"act_001": {
-				ActivityID:   "act_001",
-				ActivityName: "测试抽奖活动",
-				StrategyID:   "str_001",
+				ActivityID:    "act_001",
+				ActivityName:  "测试抽奖活动",
+				StrategyID:    "str_001",
+				ActivityState: 1,
 			},
 		},
 	}
@@ -72,8 +100,8 @@ func setupLTestService() *LotteryService {
 		},
 		awards: map[string][]*biz.StrategyAward{
 			"str_001": {
-				{AwardID: "award_001", AwardName: "一等奖", AwardRate: 0.1},
-				{AwardID: "award_002", AwardName: "二等奖", AwardRate: 0.9},
+				{AwardID: "award_001", AwardName: "一等奖", AwardRate: 0.1, AwardCount: 100},
+				{AwardID: "award_002", AwardName: "二等奖", AwardRate: 0.9, AwardCount: 100},
 			},
 		},
 	}
@@ -113,14 +141,14 @@ func TestRaffleHTTP_InvalidJSON(t *testing.T) {
 
 	svc.RaffleHTTP(w, req)
 
-	if w.Code != http.StatusOK {
-		t.Errorf("expected status 200, got %d", w.Code)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected status 400, got %d", w.Code)
 	}
 
 	var resp map[string]interface{}
 	json.Unmarshal(w.Body.Bytes(), &resp)
-	if resp["code"] != "400" {
-		t.Errorf("expected code 400, got %v", resp["code"])
+	if resp["code"] != "C0001" {
+		t.Errorf("expected code C0001, got %v", resp["code"])
 	}
 }
 

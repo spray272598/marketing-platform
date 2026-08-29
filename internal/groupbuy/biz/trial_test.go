@@ -7,7 +7,7 @@ import (
 
 func TestTrialMarket_ZJ(t *testing.T) {
 	activityRepo := newMockGBActivityRepo()
-	activityRepo.activities["act_001"] = &GroupBuyActivity{ActivityID: "act_001", DiscountID: "disc_001"}
+	activityRepo.activities["act_001"] = &GroupBuyActivity{ActivityID: "act_001", DiscountID: "disc_001", ActivityState: 1}
 	activityRepo.discounts["disc_001"] = &GroupBuyDiscount{MarketPlan: "ZJ", MarketExpr: "100"}
 
 	trialSvc := NewTrialService(activityRepo)
@@ -26,7 +26,7 @@ func TestTrialMarket_ZJ(t *testing.T) {
 
 func TestTrialMarket_ZK(t *testing.T) {
 	activityRepo := newMockGBActivityRepo()
-	activityRepo.activities["act_002"] = &GroupBuyActivity{ActivityID: "act_002", DiscountID: "disc_002"}
+	activityRepo.activities["act_002"] = &GroupBuyActivity{ActivityID: "act_002", DiscountID: "disc_002", ActivityState: 1}
 	activityRepo.discounts["disc_002"] = &GroupBuyDiscount{MarketPlan: "ZK", MarketExpr: "8.0"}
 
 	trialSvc := NewTrialService(activityRepo)
@@ -42,7 +42,7 @@ func TestTrialMarket_ZK(t *testing.T) {
 
 func TestTrialMarket_N(t *testing.T) {
 	activityRepo := newMockGBActivityRepo()
-	activityRepo.activities["act_003"] = &GroupBuyActivity{ActivityID: "act_003", DiscountID: "disc_003"}
+	activityRepo.activities["act_003"] = &GroupBuyActivity{ActivityID: "act_003", DiscountID: "disc_003", ActivityState: 1}
 	activityRepo.discounts["disc_003"] = &GroupBuyDiscount{MarketPlan: "N", MarketExpr: "99"}
 
 	trialSvc := NewTrialService(activityRepo)
@@ -77,8 +77,9 @@ func TestLockOrder_Success(t *testing.T) {
 	redisRepo := newMockGBRedisRepo()
 
 	activityRepo.activities["act_010"] = &GroupBuyActivity{
-		ActivityID:  "act_010",
-		TargetCount: 2,
+		ActivityID:    "act_010",
+		TargetCount:   2,
+		ActivityState: 1,
 	}
 
 	lockSvc := NewLockService(activityRepo, orderRepo, teamRepo, redisRepo)

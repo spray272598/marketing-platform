@@ -2,6 +2,7 @@ package biz
 
 import (
 	"context"
+	"fmt"
 	"testing"
 )
 
@@ -14,7 +15,7 @@ func newMockStockRepo() *mockStockRepo {
 		stocks: map[string]*StockItem{
 			"product:sku_001": {StockKey: "product:sku_001", StockName: "iPhone", StockType: "product", Stock: 100, Total: 100},
 			"team:team_001":   {StockKey: "team:team_001", StockName: "团位", StockType: "team", Stock: 50, Total: 50},
-			"prize:award_001": {StockKey: "prize:award_001", StockName: "奖品", StockType: "prize", Stock: 10, Total: 10},
+			"prize:award_001": {StockKey: "prize:award_001", StockName: "奖品", StockType: "prize", Stock: 10, Total: 20},
 		},
 	}
 }
@@ -31,6 +32,30 @@ func (m *mockStockRepo) UpdateStock(ctx context.Context, stockKey string, stock 
 		item.Stock = stock
 	}
 	return nil
+}
+
+func (m *mockStockRepo) DeductStockAtomic(ctx context.Context, stockKey string, count int32) (bool, error) {
+	item, ok := m.stocks[stockKey]
+	if !ok || item == nil {
+		return false, fmt.Errorf("stock not found")
+	}
+	if item.Stock < count {
+		return false, nil
+	}
+	item.Stock -= count
+	return true, nil
+}
+
+func (m *mockStockRepo) RestoreStockAtomic(ctx context.Context, stockKey string, count int32) (bool, error) {
+	item, ok := m.stocks[stockKey]
+	if !ok || item == nil {
+		return false, fmt.Errorf("stock not found")
+	}
+	item.Stock += count
+	if item.Stock > item.Total {
+		item.Stock = item.Total
+	}
+	return true, nil
 }
 
 func TestDeductStock_Success(t *testing.T) {

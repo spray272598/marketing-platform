@@ -117,7 +117,7 @@ func newMockGBRedisRepo() *mockGBRedisRepo {
 	}
 }
 
-func (m *mockGBRedisRepo) LockOrder(ctx context.Context, orderKey string) (bool, error) {
+func (m *mockGBRedisRepo) LockOrder(ctx context.Context, orderKey string, lockValue string) (bool, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.locked[orderKey] {
@@ -127,7 +127,7 @@ func (m *mockGBRedisRepo) LockOrder(ctx context.Context, orderKey string) (bool,
 	return true, nil
 }
 
-func (m *mockGBRedisRepo) UnlockOrder(ctx context.Context, orderKey string) error {
+func (m *mockGBRedisRepo) UnlockOrder(ctx context.Context, orderKey string, lockValue string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	delete(m.locked, orderKey)

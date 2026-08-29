@@ -37,7 +37,14 @@ func NewData(c *conf.Data) (*Data, func(), error) {
 }
 
 func (d *Data) HealthCheck(ctx context.Context) map[string]bool {
-	return map[string]bool{"mysql": d.db != nil}
+	healthy := false
+	if d.db != nil {
+		// 真正 ping 一下数据库，而不是只判断指针非空
+		if _, err := d.db.StockItem.Query().Limit(1).All(ctx); err == nil {
+			healthy = true
+		}
+	}
+	return map[string]bool{"mysql": healthy}
 }
 
 type stockRepo struct{ data *Data }
@@ -65,4 +72,35 @@ func (r *stockRepo) UpdateStock(ctx context.Context, stockKey string, stock int3
 		SetStock(stock).
 		Save(ctx)
 	return err
+}
+
+func (r *stockRepo) DeductStockAtomic(ctx context.Context, stockKey string, count int32) (bool, error) {
+	n, err := r.data.db.StockItem.Update().
+		Where(stockitem.StockKeyEQ(stockKey), stockitem.StockGTE(count)).
+		AddStock(-count).
+		Save(ctx)
+	if err != nil {
+		return false, err
+	}
+	return n > 0, nil
+}
+
+func (r *stockRepo) RestoreStockAtomic(ctx context.Context, stockKey string, count int32) (bool, error) {
+	po, err := r.data.db.StockItem.Query().
+		Where(stockitem.StockKeyEQ(stockKey)).Only(ctx)
+	if err != nil {
+		return false, err
+	}
+	newStock := po.Stock + count
+	if newStock > po.Total {
+		newStock = po.Total
+	}
+	n, err := r.data.db.StockItem.Update().
+		Where(stockitem.StockKeyEQ(stockKey)).
+		SetStock(newStock).
+		Save(ctx)
+	if err != nil {
+		return false, err
+	}
+	return n > 0, nil
 }

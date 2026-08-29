@@ -3,7 +3,19 @@ package biz
 import (
 	"context"
 	"testing"
+	"time"
 )
+
+func validActivity(id, skuID string) *SeckillActivity {
+	return &SeckillActivity{
+		ActivityID:    id,
+		SkuID:         skuID,
+		TotalCount:    100,
+		ActivityState: 1,
+		StartTime:     time.Now().Add(-1 * time.Hour).Format("2006-01-02 15:04:05"),
+		EndTime:       time.Now().Add(1 * time.Hour).Format("2006-01-02 15:04:05"),
+	}
+}
 
 func TestCreateSeckillOrder_Success(t *testing.T) {
 	orderRepo := newMockOrderRepo()
@@ -12,11 +24,7 @@ func TestCreateSeckillOrder_Success(t *testing.T) {
 	activityRepo := newMockActivityRepo()
 	stockClient := &mockStockClient{}
 
-	activityRepo.activities["act_001"] = &SeckillActivity{
-		ActivityID: "act_001",
-		SkuID:      "sku_001",
-		TotalCount: 100,
-	}
+	activityRepo.activities["act_001"] = validActivity("act_001", "sku_001")
 
 	tradeSvc := NewTradeService(orderRepo, redisRepo, mqRepo, activityRepo, stockClient)
 
@@ -73,9 +81,12 @@ func TestCreateSeckillOrder_StockNotEnough(t *testing.T) {
 	stockClient := &mockStockClient{}
 
 	activityRepo.activities["act_002"] = &SeckillActivity{
-		ActivityID: "act_002",
-		SkuID:      "sku_002",
-		TotalCount: 0,
+		ActivityID:    "act_002",
+		SkuID:         "sku_002",
+		TotalCount:    0,
+		ActivityState: 1,
+		StartTime:     time.Now().Add(-1 * time.Hour).Format("2006-01-02 15:04:05"),
+		EndTime:       time.Now().Add(1 * time.Hour).Format("2006-01-02 15:04:05"),
 	}
 
 	tradeSvc := NewTradeService(orderRepo, redisRepo, mqRepo, activityRepo, stockClient)
@@ -102,9 +113,12 @@ func TestCreateSeckillOrder_DuplicateOrder_Atomic(t *testing.T) {
 	stockClient := &mockStockClient{}
 
 	activityRepo.activities["act_003"] = &SeckillActivity{
-		ActivityID: "act_003",
-		SkuID:      "sku_003",
-		TotalCount: 100,
+		ActivityID:    "act_003",
+		SkuID:         "sku_003",
+		TotalCount:    100,
+		ActivityState: 1,
+		StartTime:     time.Now().Add(-1 * time.Hour).Format("2006-01-02 15:04:05"),
+		EndTime:       time.Now().Add(1 * time.Hour).Format("2006-01-02 15:04:05"),
 	}
 
 	tradeSvc := NewTradeService(orderRepo, redisRepo, mqRepo, activityRepo, stockClient)
@@ -147,9 +161,12 @@ func TestCreateSeckillOrder_ConcurrentStockDecrement(t *testing.T) {
 	stockClient := &mockStockClient{}
 
 	activityRepo.activities["act_005"] = &SeckillActivity{
-		ActivityID: "act_005",
-		SkuID:      "sku_005",
-		TotalCount: 100,
+		ActivityID:    "act_005",
+		SkuID:         "sku_005",
+		TotalCount:    100,
+		ActivityState: 1,
+		StartTime:     time.Now().Add(-1 * time.Hour).Format("2006-01-02 15:04:05"),
+		EndTime:       time.Now().Add(1 * time.Hour).Format("2006-01-02 15:04:05"),
 	}
 
 	tradeSvc := NewTradeService(orderRepo, redisRepo, mqRepo, activityRepo, stockClient)
@@ -195,9 +212,12 @@ func TestGetOrder_Success(t *testing.T) {
 	stockClient := &mockStockClient{}
 
 	activityRepo.activities["act_004"] = &SeckillActivity{
-		ActivityID: "act_004",
-		SkuID:      "sku_004",
-		TotalCount: 100,
+		ActivityID:    "act_004",
+		SkuID:         "sku_004",
+		TotalCount:    100,
+		ActivityState: 1,
+		StartTime:     time.Now().Add(-1 * time.Hour).Format("2006-01-02 15:04:05"),
+		EndTime:       time.Now().Add(1 * time.Hour).Format("2006-01-02 15:04:05"),
 	}
 
 	tradeSvc := NewTradeService(orderRepo, redisRepo, mqRepo, activityRepo, stockClient)

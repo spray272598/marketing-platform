@@ -43,10 +43,10 @@ func WriteSuccess[T any](w http.ResponseWriter, data T) {
 	WriteJSON(w, http.StatusOK, Success(data))
 }
 
-func WriteError[T any](w http.ResponseWriter, status int, rc ResponseCode) {
-	WriteJSON(w, status, FailWithCode[T](rc))
+func WriteError(w http.ResponseWriter, status int, rc ResponseCode) {
+	WriteJSON(w, status, FailWithCode[any](rc))
 }
 
-func WriteErrorf[T any](w http.ResponseWriter, status int, code, info string) {
-	WriteJSON(w, status, Fail[T](code, info))
+func WriteErrorf(w http.ResponseWriter, status int, code, info string) {
+	WriteJSON(w, status, Fail[any](code, info))
 }
