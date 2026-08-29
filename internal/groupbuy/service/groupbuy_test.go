@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/marketing-platform/internal/groupbuy/biz"
+	"github.com/marketing-platform/pkg/auth"
 )
 
 type mockGBActivityRepo struct {
@@ -32,6 +33,12 @@ func (m *mockGBActivityRepo) GetDiscount(ctx context.Context, discountID string)
 
 type mockGBOrderRepo struct {
 	orders map[string]*biz.GroupBuyOrder
+	seq    int64
+}
+
+func (m *mockGBOrderRepo) NextOrderID(ctx context.Context, bizTag string) (int64, error) {
+	m.seq++
+	return m.seq, nil
 }
 
 func (m *mockGBOrderRepo) CreateOrder(ctx context.Context, order *biz.GroupBuyOrder) error {
@@ -69,12 +76,31 @@ func (m *mockGBTeamRepo) GetTeam(ctx context.Context, teamID string) (*biz.Group
 	return nil, nil
 }
 
-func (m *mockGBTeamRepo) IncrementTeamComplete(ctx context.Context, teamID string) (int32, error) {
-	if t, ok := m.teams[teamID]; ok {
-		t.CompleteCount++
-		return t.CompleteCount, nil
+func (m *mockGBTeamRepo) CompleteTeam(ctx context.Context, teamID string, targetCount, successState int32) (int32, bool, error) {
+	t, ok := m.teams[teamID]
+	if !ok {
+		return 0, false, nil
 	}
-	return 0, nil
+	if t.TeamState != 0 || t.CompleteCount >= targetCount {
+		return t.CompleteCount, false, nil
+	}
+	t.CompleteCount++
+	completed := false
+	if t.CompleteCount >= targetCount {
+		t.TeamState = successState
+		completed = true
+	}
+	return t.CompleteCount, completed, nil
+}
+
+func (m *mockGBTeamRepo) RollbackTeamComplete(ctx context.Context, teamID string, buildingState int32) error {
+	if t, ok := m.teams[teamID]; ok {
+		if t.CompleteCount > 0 {
+			t.CompleteCount--
+		}
+		t.TeamState = buildingState
+	}
+	return nil
 }
 
 type mockGBRedisRepo struct{}
@@ -178,9 +204,11 @@ func setupGBTestService() *GroupBuyService {
 
 func TestTrialGroupBuyMarketHTTP_Success(t *testing.T) {
 	svc := setupGBTestService()
-	body := `{"activity_id":"act_001","user_id":1001,"market_original_price":100}`
+	body := `{"activity_id":"act_001","market_original_price":100}`
 	req := httptest.NewRequest("POST", "/api/v1/groupbuy/trial", bytes.NewBufferString(body))
 	req.Header.Set("Content-Type", "application/json")
+	// 身份由鉴权中间件写入 context，这里模拟一个已认证用户。
+	req = req.WithContext(auth.WithUserID(req.Context(), 1001))
 	w := httptest.NewRecorder()
 	svc.TrialGroupBuyMarketHTTP(w, req)
 	if w.Code != http.StatusOK {
@@ -211,9 +239,11 @@ func TestTrialGroupBuyMarketHTTP_InvalidJSON(t *testing.T) {
 
 func TestLockMarketPayOrderHTTP_Success(t *testing.T) {
 	svc := setupGBTestService()
-	body := `{"activity_id":"act_001","user_id":1001,"channel":"app","source":"homepage"}`
+	body := `{"activity_id":"act_001","channel":"app","source":"homepage"}`
 	req := httptest.NewRequest("POST", "/api/v1/groupbuy/order/lock", bytes.NewBufferString(body))
 	req.Header.Set("Content-Type", "application/json")
+	// 身份只认令牌解析出的 user_id，请求体里不再传 user_id。
+	req = req.WithContext(auth.WithUserID(req.Context(), 1001))
 	w := httptest.NewRecorder()
 	svc.LockMarketPayOrderHTTP(w, req)
 	if w.Code != http.StatusOK {
@@ -223,6 +253,20 @@ func TestLockMarketPayOrderHTTP_Success(t *testing.T) {
 	json.Unmarshal(w.Body.Bytes(), &resp)
 	if resp["code"] != "0000" {
 		t.Errorf("expected code 0000, got %v", resp["code"])
+	}
+}
+
+// TestLockMarketPayOrderHTTP_Unauthorized 未认证不得锁单：
+// 请求体里自带的 user_id 不再被采信，避免冒用他人身份下单。
+func TestLockMarketPayOrderHTTP_Unauthorized(t *testing.T) {
+	svc := setupGBTestService()
+	body := `{"activity_id":"act_001","user_id":1001,"channel":"app","source":"homepage"}`
+	req := httptest.NewRequest("POST", "/api/v1/groupbuy/order/lock", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	svc.LockMarketPayOrderHTTP(w, req)
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("expected status 401 without identity, got %d", w.Code)
 	}
 }
 

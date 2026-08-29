@@ -75,7 +75,8 @@ func (s *LockService) LockOrder(ctx context.Context, activityID string, userID i
 		TeamState:     common.TeamStateBuilding,
 	}
 	if err := s.teamRepo.CreateTeam(ctx, team); err != nil {
-		_ = s.orderRepo.UpdateOrderState(ctx, order.OrderID, common.OrderStateCancelled)
+		// 补偿失败必须留痕：否则会出现"订单已存在但没有团队"的不一致状态且无人知晓。
+		compensate("cancel_order", s.orderRepo.UpdateOrderState(ctx, order.OrderID, common.OrderStateCancelled))
 		return nil, fmt.Errorf("create team failed: %w", err)
 	}
 

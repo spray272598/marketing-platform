@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/marketing-platform/internal/lottery/biz"
+	"github.com/marketing-platform/pkg/auth"
 	"github.com/marketing-platform/pkg/common"
 )
 
@@ -32,18 +33,23 @@ func (s *LotteryService) RaffleHTTP(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 4096)
 	var req struct {
 		ActivityId string `json:"activity_id"`
-		UserId     int64  `json:"user_id"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		common.WriteError(w, http.StatusBadRequest, common.ParamError)
 		return
 	}
-	if req.ActivityId == "" || req.UserId <= 0 {
+	if req.ActivityId == "" {
 		common.WriteError(w, http.StatusBadRequest, common.ParamError)
 		return
 	}
+	// 身份只认鉴权中间件解析出的 user_id，不采信请求体自带字段，防止冒用他人身份抽奖。
+	userID, ok := auth.UserID(r.Context())
+	if !ok {
+		common.WriteError(w, http.StatusUnauthorized, common.Unauthorized)
+		return
+	}
 
-	result, err := s.raffleSvc.Raffle(r.Context(), req.ActivityId, req.UserId)
+	result, err := s.raffleSvc.Raffle(r.Context(), req.ActivityId, userID)
 	if err != nil {
 		common.WriteBizError(w, err)
 		return

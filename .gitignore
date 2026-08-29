@@ -12,6 +12,9 @@ bin/
 # Output
 *.out
 
+# Logs
+*.log
+
 # Dependency directories
 vendor/
 

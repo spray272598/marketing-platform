@@ -7,15 +7,15 @@ import (
 
 	"github.com/marketing-platform/internal/conf"
 	"github.com/marketing-platform/internal/gateway"
+	"github.com/marketing-platform/pkg/middleware"
 
-	"github.com/go-kratos/kratos/v3/middleware/recovery"
 	kratoshttp "github.com/go-kratos/kratos/v3/transport/http"
 )
 
 func NewHTTPServer(c *conf.Server, gatewaySvc *gateway.Service) *kratoshttp.Server {
-	var opts = []kratoshttp.ServerOption{
-		kratoshttp.Middleware(recovery.Recovery()),
-	}
+	// 注意：Kratos v3 的 http.Middleware() 不会作用于 srv.HandleFunc 注册的原生
+	// handler，所以中间件必须统一走 http.Filter()（net/http 风格）才能生效。
+	var opts = []kratoshttp.ServerOption{kratoshttp.Filter(middleware.Recovery())}
 	if c.GetHttp().GetNetwork() != "" {
 		opts = append(opts, kratoshttp.Network(c.GetHttp().GetNetwork()))
 	}
@@ -36,7 +36,8 @@ func NewHTTPServer(c *conf.Server, gatewaySvc *gateway.Service) *kratoshttp.Serv
 			json.NewEncoder(w).Encode(map[string]interface{}{"code": "400", "message": "missing service or path param"})
 			return
 		}
-		result, err := gatewaySvc.ProxyRequest(r.Context(), serviceName, r.Method, path, nil)
+		// 转发原始请求体与请求头：否则后端既收不到参数，也无法用用户令牌鉴权。
+		result, err := gatewaySvc.ProxyRequest(r.Context(), serviceName, r.Method, path, r.Body, r.Header)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			json.NewEncoder(w).Encode(map[string]interface{}{"code": "500", "message": err.Error()})

@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"sync"
+
+	"github.com/marketing-platform/pkg/common"
 )
 
 type mockGBActivityRepo struct {
@@ -104,14 +106,39 @@ func (m *mockTeamRepo) GetTeam(ctx context.Context, teamID string) (*GroupBuyTea
 	return nil, fmt.Errorf("team not found")
 }
 
-func (m *mockTeamRepo) IncrementTeamComplete(ctx context.Context, teamID string) (int32, error) {
+// CompleteTeam 模拟原子自增 + 达标流转：只有真正从"进行中"改为"成团"
+// 的那一次返回 completed=true，用于验证成团通知不会被重复创建。
+func (m *mockTeamRepo) CompleteTeam(ctx context.Context, teamID string, targetCount, successState int32) (int32, bool, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if t, ok := m.teams[teamID]; ok {
-		t.CompleteCount++
-		return t.CompleteCount, nil
+	t, ok := m.teams[teamID]
+	if !ok {
+		return 0, false, fmt.Errorf("team not found")
 	}
-	return 0, fmt.Errorf("team not found")
+	if t.TeamState != common.TeamStateBuilding || t.CompleteCount >= targetCount {
+		return t.CompleteCount, false, ErrTeamNotSettleable
+	}
+	t.CompleteCount++
+	completed := false
+	if t.CompleteCount >= targetCount {
+		t.TeamState = successState
+		completed = true
+	}
+	return t.CompleteCount, completed, nil
+}
+
+func (m *mockTeamRepo) RollbackTeamComplete(ctx context.Context, teamID string, buildingState int32) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	t, ok := m.teams[teamID]
+	if !ok {
+		return fmt.Errorf("team not found")
+	}
+	if t.CompleteCount > 0 {
+		t.CompleteCount--
+	}
+	t.TeamState = buildingState
+	return nil
 }
 
 type mockGBRedisRepo struct {
@@ -170,6 +197,8 @@ func (m *mockGBMQRepo) PublishRefundMessage(ctx context.Context, orderID string)
 type mockNotifyTaskRepo struct {
 	mu    sync.RWMutex
 	tasks map[string]*NotifyTask
+	// createErr 非空时 CreateTask 返回该错误，用于验证 Saga 补偿路径。
+	createErr error
 }
 
 func newMockNotifyTaskRepo() *mockNotifyTaskRepo {
@@ -181,6 +210,9 @@ func newMockNotifyTaskRepo() *mockNotifyTaskRepo {
 func (m *mockNotifyTaskRepo) CreateTask(ctx context.Context, task *NotifyTask) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.createErr != nil {
+		return m.createErr
+	}
 	m.tasks[task.TaskID] = task
 	return nil
 }

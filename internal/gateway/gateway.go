@@ -1,7 +1,6 @@
 ﻿package gateway
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -83,7 +82,17 @@ type ServiceError struct {
 	Message string `json:"message"`
 }
 
-func (s *Service) ProxyRequest(ctx context.Context, serviceName, method, path string, body interface{}) (map[string]interface{}, error) {
+// hopHeaders 是允许从调用方透传给后端服务的请求头白名单。
+//
+// 只透传用户令牌与链路追踪标识；内部服务令牌（X-Internal-Token）绝不透传，
+// 否则外部调用方可借网关伪造内部服务身份。
+var hopHeaders = []string{"Authorization", "X-Trace-Id"}
+
+// ProxyRequest 把请求转发到目标服务。
+//   - body：请求体（可为 nil）；
+//   - headers：调用方请求头，其中白名单内的头会透传给后端，
+//     使后端服务能用同一个用户令牌完成鉴权。
+func (s *Service) ProxyRequest(ctx context.Context, serviceName, method, path string, body io.Reader, headers http.Header) (map[string]interface{}, error) {
 	svc, err := s.GetService(serviceName)
 	if err != nil {
 		return nil, err
@@ -92,21 +101,21 @@ func (s *Service) ProxyRequest(ctx context.Context, serviceName, method, path st
 	endpoint := s.SelectEndpoint(svc)
 	url := endpoint + path
 
-	var bodyReader io.Reader
-	if body != nil {
-		bodyBytes, err := json.Marshal(body)
-		if err != nil {
-			return nil, fmt.Errorf("marshal request body: %w", err)
-		}
-		bodyReader = bytes.NewReader(bodyBytes)
-	}
-
-	req, err := http.NewRequestWithContext(ctx, method, url, bodyReader)
+	req, err := http.NewRequestWithContext(ctx, method, url, body)
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Gateway-Service", serviceName)
+
+	// 透传用户身份与链路标识，后端据此鉴权。
+	if headers != nil {
+		for _, key := range hopHeaders {
+			if v := headers.Get(key); v != "" {
+				req.Header.Set(key, v)
+			}
+		}
+	}
 
 	resp, err := s.client.Do(req)
 	if err != nil {

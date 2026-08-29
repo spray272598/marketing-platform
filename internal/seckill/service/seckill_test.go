@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/marketing-platform/internal/seckill/biz"
+	"github.com/marketing-platform/pkg/auth"
 	"github.com/marketing-platform/pkg/common"
 )
 
@@ -30,6 +31,12 @@ func (m *mockActivityRepo) UpdateActivityStock(ctx context.Context, activityID s
 
 type mockOrderRepo struct {
 	orders map[string]*biz.SeckillOrder
+	seq    int64
+}
+
+func (m *mockOrderRepo) NextOrderID(ctx context.Context, bizTag string) (int64, error) {
+	m.seq++
+	return m.seq, nil
 }
 
 func (m *mockOrderRepo) CreateOrder(ctx context.Context, order *biz.SeckillOrder) error {
@@ -129,7 +136,8 @@ func (m *mockStockClient) RestoreStock(ctx context.Context, stockKey string, cou
 	return nil
 }
 
-func setupTestService() *SeckillService {
+// setupTestServiceWithRepo 额外返回订单仓储，便于测试预置数据。
+func setupTestServiceWithRepo() (*SeckillService, *mockOrderRepo) {
 	activityRepo := &mockActivityRepo{
 		activities: map[string]*biz.SeckillActivity{
 			"act_001": {
@@ -151,7 +159,13 @@ func setupTestService() *SeckillService {
 	stockClient := &mockStockClient{}
 
 	tradeSvc := biz.NewTradeService(orderRepo, redisRepo, mqRepo, activityRepo, stockClient)
-	return NewSeckillService(tradeSvc, activityRepo)
+	return NewSeckillService(tradeSvc, activityRepo), orderRepo
+}
+
+// setupTestService 保留单返回值的便捷入口，避免影响既有测试。
+func setupTestService() *SeckillService {
+	svc, _ := setupTestServiceWithRepo()
+	return svc
 }
 
 func TestQuerySeckillActivityHTTP(t *testing.T) {
@@ -195,9 +209,11 @@ func TestQuerySeckillActivityHTTP_NotFound(t *testing.T) {
 func TestCreateSeckillOrderHTTP_Success(t *testing.T) {
 	svc := setupTestService()
 
-	body := `{"activity_id":"act_001","user_id":1001}`
+	body := `{"activity_id":"act_001"}`
 	req := httptest.NewRequest("POST", "/api/v1/seckill/order/create", bytes.NewBufferString(body))
 	req.Header.Set("Content-Type", "application/json")
+	// 身份由鉴权中间件写入 context，这里模拟一个已认证用户。
+	req = req.WithContext(auth.WithUserID(req.Context(), 1001))
 	w := httptest.NewRecorder()
 
 	svc.CreateSeckillOrderHTTP(w, req)
@@ -234,6 +250,26 @@ func TestCreateSeckillOrderHTTP_InvalidJSON(t *testing.T) {
 }
 
 func TestQuerySeckillOrderHTTP_Success(t *testing.T) {
+	svc, orderRepo := setupTestServiceWithRepo()
+	orderRepo.orders["test_order"] = &biz.SeckillOrder{
+		OrderID:    "test_order",
+		ActivityID: "act_001",
+		UserID:     1001,
+	}
+
+	req := httptest.NewRequest("GET", "/api/v1/seckill/order/query?order_id=test_order", nil)
+	req = req.WithContext(auth.WithUserID(req.Context(), 1001))
+	w := httptest.NewRecorder()
+
+	svc.QuerySeckillOrderHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", w.Code)
+	}
+}
+
+// TestQuerySeckillOrderHTTP_Unauthorized 未携带身份时不得查询订单。
+func TestQuerySeckillOrderHTTP_Unauthorized(t *testing.T) {
 	svc := setupTestService()
 
 	req := httptest.NewRequest("GET", "/api/v1/seckill/order/query?order_id=test_order", nil)
@@ -241,8 +277,46 @@ func TestQuerySeckillOrderHTTP_Success(t *testing.T) {
 
 	svc.QuerySeckillOrderHTTP(w, req)
 
-	if w.Code != http.StatusOK {
-		t.Errorf("expected status 200, got %d", w.Code)
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("expected status 401 without identity, got %d", w.Code)
+	}
+}
+
+// TestQuerySeckillOrderHTTP_Forbidden 验证不能仅凭 order_id 查看他人订单。
+func TestQuerySeckillOrderHTTP_Forbidden(t *testing.T) {
+	svc, orderRepo := setupTestServiceWithRepo()
+	orderRepo.orders["test_order"] = &biz.SeckillOrder{
+		OrderID:    "test_order",
+		ActivityID: "act_001",
+		UserID:     1001,
+	}
+
+	// 当前认证用户是 2002，订单属于 1001，应拒绝。
+	req := httptest.NewRequest("GET", "/api/v1/seckill/order/query?order_id=test_order", nil)
+	req = req.WithContext(auth.WithUserID(req.Context(), 2002))
+	w := httptest.NewRecorder()
+
+	svc.QuerySeckillOrderHTTP(w, req)
+
+	if w.Code != http.StatusForbidden {
+		t.Errorf("expected status 403 for another user's order, got %d", w.Code)
+	}
+}
+
+// TestCreateSeckillOrderHTTP_Unauthorized 未认证不得下单，
+// 且请求体里自带的 user_id 不再被采信。
+func TestCreateSeckillOrderHTTP_Unauthorized(t *testing.T) {
+	svc := setupTestService()
+
+	body := `{"activity_id":"act_001","user_id":1001}`
+	req := httptest.NewRequest("POST", "/api/v1/seckill/order/create", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	svc.CreateSeckillOrderHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("expected status 401 without identity, got %d", w.Code)
 	}
 }
 

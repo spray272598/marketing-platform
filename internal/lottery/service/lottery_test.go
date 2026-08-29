@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/marketing-platform/internal/lottery/biz"
+	"github.com/marketing-platform/pkg/auth"
 )
 
 type mockLActivityRepo struct {
@@ -70,6 +71,12 @@ func (m *mockLStrategyRepo) RestoreAwardStock(ctx context.Context, awardID strin
 
 type mockLOrderRepo struct {
 	orders map[string]*biz.LotteryOrder
+	seq    int64
+}
+
+func (m *mockLOrderRepo) NextOrderID(ctx context.Context, bizTag string) (int64, error) {
+	m.seq++
+	return m.seq, nil
 }
 
 func (m *mockLOrderRepo) CreateOrder(ctx context.Context, order *biz.LotteryOrder) error {
@@ -114,9 +121,11 @@ func setupLTestService() *LotteryService {
 func TestRaffleHTTP_Success(t *testing.T) {
 	svc := setupLTestService()
 
-	body := `{"activity_id":"act_001","user_id":1001}`
+	body := `{"activity_id":"act_001"}`
 	req := httptest.NewRequest("POST", "/api/v1/lottery/raffle", bytes.NewBufferString(body))
 	req.Header.Set("Content-Type", "application/json")
+	// 身份由鉴权中间件写入 context，这里模拟一个已认证用户。
+	req = req.WithContext(auth.WithUserID(req.Context(), 1001))
 	w := httptest.NewRecorder()
 
 	svc.RaffleHTTP(w, req)
@@ -129,6 +138,22 @@ func TestRaffleHTTP_Success(t *testing.T) {
 	json.Unmarshal(w.Body.Bytes(), &resp)
 	if resp["code"] != "0000" {
 		t.Errorf("expected code 0000, got %v", resp["code"])
+	}
+}
+
+// TestRaffleHTTP_Unauthorized 未认证不得抽奖：请求体自带的 user_id 不再被采信。
+func TestRaffleHTTP_Unauthorized(t *testing.T) {
+	svc := setupLTestService()
+
+	body := `{"activity_id":"act_001","user_id":1001}`
+	req := httptest.NewRequest("POST", "/api/v1/lottery/raffle", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	svc.RaffleHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("expected status 401 without identity, got %d", w.Code)
 	}
 }
 

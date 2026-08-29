@@ -88,7 +88,8 @@ func (s *RaffleService) Raffle(ctx context.Context, activityID string, userID in
 	id, err := s.orderRepo.NextOrderID(ctx, "order")
 	if err != nil {
 		if won {
-			_ = s.strategyRepo.RestoreAwardStock(ctx, award.AwardID)
+			// 补偿失败必须留痕，否则奖品库存会凭空减少且无人知晓。
+			compensate("restore_award_stock", s.strategyRepo.RestoreAwardStock(ctx, award.AwardID))
 		}
 		return nil, fmt.Errorf("generate order id failed: %w", err)
 	}
@@ -106,7 +107,7 @@ func (s *RaffleService) Raffle(ctx context.Context, activityID string, userID in
 
 	if err := s.orderRepo.CreateOrder(ctx, order); err != nil {
 		if won {
-			_ = s.strategyRepo.RestoreAwardStock(ctx, award.AwardID)
+			compensate("restore_award_stock", s.strategyRepo.RestoreAwardStock(ctx, award.AwardID))
 		}
 		return nil, fmt.Errorf("create order failed: %w", err)
 	}

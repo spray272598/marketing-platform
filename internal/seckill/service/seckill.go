@@ -7,6 +7,7 @@ import (
 
 	v1 "github.com/marketing-platform/api/seckill/v1"
 	"github.com/marketing-platform/internal/seckill/biz"
+	"github.com/marketing-platform/pkg/auth"
 	"github.com/marketing-platform/pkg/common"
 )
 
@@ -41,7 +42,12 @@ func (s *SeckillService) QuerySeckillActivity(ctx context.Context, req *v1.Query
 }
 
 func (s *SeckillService) CreateSeckillOrder(ctx context.Context, req *v1.CreateSeckillOrderReq) (*v1.CreateSeckillOrderResp, error) {
-	order, err := s.tradeSvc.CreateSeckillOrder(ctx, req.GetActivityId(), req.GetUserId())
+	// 身份只认认证信息里解析出的 user_id，不采信调用方传入的 req.UserId。
+	userID, ok := auth.UserID(ctx)
+	if !ok {
+		return nil, common.Unauthorized
+	}
+	order, err := s.tradeSvc.CreateSeckillOrder(ctx, req.GetActivityId(), userID)
 	if err != nil {
 		return nil, err
 	}
@@ -54,9 +60,20 @@ func (s *SeckillService) CreateSeckillOrder(ctx context.Context, req *v1.CreateS
 }
 
 func (s *SeckillService) QuerySeckillOrder(ctx context.Context, req *v1.QuerySeckillOrderReq) (*v1.QuerySeckillOrderResp, error) {
+	userID, ok := auth.UserID(ctx)
+	if !ok {
+		return nil, common.Unauthorized
+	}
 	order, err := s.tradeSvc.GetOrder(ctx, req.GetOrderId())
 	if err != nil {
 		return nil, err
+	}
+	if order == nil {
+		return nil, common.SeckillOrderNotFound
+	}
+	// 归属校验：只能查询自己的订单。
+	if order.UserID != userID {
+		return nil, common.Forbidden
 	}
 	return &v1.QuerySeckillOrderResp{
 		OrderId:     order.OrderID,
@@ -96,17 +113,22 @@ func (s *SeckillService) CreateSeckillOrderHTTP(w http.ResponseWriter, r *http.R
 	r.Body = http.MaxBytesReader(w, r.Body, 4096)
 	var req struct {
 		ActivityId string `json:"activity_id"`
-		UserId     int64  `json:"user_id"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		common.WriteError(w, http.StatusBadRequest, common.ParamError)
 		return
 	}
-	if req.ActivityId == "" || req.UserId <= 0 {
+	if req.ActivityId == "" {
 		common.WriteError(w, http.StatusBadRequest, common.ParamError)
 		return
 	}
-	order, err := s.tradeSvc.CreateSeckillOrder(r.Context(), req.ActivityId, req.UserId)
+	// 身份只认鉴权中间件解析出的 user_id，不采信请求体自带字段，防止冒用他人身份下单。
+	userID, ok := auth.UserID(r.Context())
+	if !ok {
+		common.WriteError(w, http.StatusUnauthorized, common.Unauthorized)
+		return
+	}
+	order, err := s.tradeSvc.CreateSeckillOrder(r.Context(), req.ActivityId, userID)
 	if err != nil {
 		common.WriteBizError(w, err)
 		return
@@ -124,9 +146,24 @@ func (s *SeckillService) QuerySeckillOrderHTTP(w http.ResponseWriter, r *http.Re
 		common.WriteError(w, http.StatusBadRequest, common.ParamError)
 		return
 	}
+	userID, ok := auth.UserID(r.Context())
+	if !ok {
+		common.WriteError(w, http.StatusUnauthorized, common.Unauthorized)
+		return
+	}
 	order, err := s.tradeSvc.GetOrder(r.Context(), orderID)
 	if err != nil {
 		common.WriteBizError(w, err)
+		return
+	}
+	// repo 可能在查不到时返回 (nil, nil)，先判空再做归属校验，避免空指针。
+	if order == nil {
+		common.WriteError(w, http.StatusNotFound, common.SeckillOrderNotFound)
+		return
+	}
+	// 归属校验：只能查询自己的订单，避免仅凭 order_id 越权查看他人订单。
+	if order.UserID != userID {
+		common.WriteError(w, http.StatusForbidden, common.Forbidden)
 		return
 	}
 	common.WriteSuccess(w, order)

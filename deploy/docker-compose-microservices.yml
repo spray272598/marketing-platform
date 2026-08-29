@@ -137,6 +137,8 @@ services:
       - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
       - STOCK_URL=http://stock-market:18094
       - SPRING_PROFILES_ACTIVE=docker
+      - MARKETING_AUTH_SECRET=${MARKETING_AUTH_SECRET:-please-change-this-jwt-secret}
+      - MARKETING_INTERNAL_TOKEN=${MARKETING_INTERNAL_TOKEN:-internal-dev-token}
     depends_on:
       - nacos
       - mysql
@@ -159,6 +161,8 @@ services:
       - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
       - STOCK_URL=http://stock-market:18094
       - SPRING_PROFILES_ACTIVE=docker
+      - MARKETING_AUTH_SECRET=${MARKETING_AUTH_SECRET:-please-change-this-jwt-secret}
+      - MARKETING_INTERNAL_TOKEN=${MARKETING_INTERNAL_TOKEN:-internal-dev-token}
     depends_on:
       - nacos
       - mysql
@@ -180,6 +184,8 @@ services:
       - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
       - STOCK_URL=http://stock-market:18094
       - SPRING_PROFILES_ACTIVE=docker
+      - MARKETING_AUTH_SECRET=${MARKETING_AUTH_SECRET:-please-change-this-jwt-secret}
+      - MARKETING_INTERNAL_TOKEN=${MARKETING_INTERNAL_TOKEN:-internal-dev-token}
     depends_on:
       - nacos
       - mysql
@@ -199,6 +205,8 @@ services:
       - MYSQL_DSN=root:root@tcp(mysql:3306)/marketing_stock?charset=utf8mb4&parseTime=True&loc=Local
       - REDIS_ADDR=redis:6379
       - SPRING_PROFILES_ACTIVE=docker
+      - MARKETING_AUTH_SECRET=${MARKETING_AUTH_SECRET:-please-change-this-jwt-secret}
+      - MARKETING_INTERNAL_TOKEN=${MARKETING_INTERNAL_TOKEN:-internal-dev-token}
     depends_on:
       - nacos
       - mysql

@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/marketing-platform/internal/groupbuy/biz"
+	"github.com/marketing-platform/pkg/auth"
 	"github.com/marketing-platform/pkg/common"
 )
 
@@ -41,15 +42,19 @@ func (s *GroupBuyService) TrialGroupBuyMarketHTTP(w http.ResponseWriter, r *http
 	r.Body = http.MaxBytesReader(w, r.Body, 4096)
 	var req struct {
 		ActivityId          string `json:"activity_id"`
-		UserId              int64  `json:"user_id"`
 		MarketOriginalPrice int32  `json:"market_original_price"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		common.WriteError(w, http.StatusBadRequest, common.ParamError)
 		return
 	}
-	if req.ActivityId == "" || req.UserId <= 0 {
+	if req.ActivityId == "" {
 		common.WriteError(w, http.StatusBadRequest, common.ParamError)
+		return
+	}
+	// 试算本身不按用户区分，但仍要求已认证，避免接口被匿名刷用。
+	if _, ok := auth.UserID(r.Context()); !ok {
+		common.WriteError(w, http.StatusUnauthorized, common.Unauthorized)
 		return
 	}
 
@@ -70,7 +75,6 @@ func (s *GroupBuyService) LockMarketPayOrderHTTP(w http.ResponseWriter, r *http.
 	r.Body = http.MaxBytesReader(w, r.Body, 4096)
 	var req struct {
 		ActivityId string `json:"activity_id"`
-		UserId     int64  `json:"user_id"`
 		Channel    string `json:"channel"`
 		Source     string `json:"source"`
 	}
@@ -78,12 +82,18 @@ func (s *GroupBuyService) LockMarketPayOrderHTTP(w http.ResponseWriter, r *http.
 		common.WriteError(w, http.StatusBadRequest, common.ParamError)
 		return
 	}
-	if req.ActivityId == "" || req.UserId <= 0 {
+	if req.ActivityId == "" {
 		common.WriteError(w, http.StatusBadRequest, common.ParamError)
 		return
 	}
+	// 身份只认鉴权中间件解析出的 user_id，不采信请求体自带字段，防止冒用他人身份锁单。
+	userID, ok := auth.UserID(r.Context())
+	if !ok {
+		common.WriteError(w, http.StatusUnauthorized, common.Unauthorized)
+		return
+	}
 
-	order, err := s.lockSvc.LockOrder(r.Context(), req.ActivityId, req.UserId, req.Channel, req.Source)
+	order, err := s.lockSvc.LockOrder(r.Context(), req.ActivityId, userID, req.Channel, req.Source)
 	if err != nil {
 		common.WriteBizError(w, err)
 		return

@@ -1,6 +1,14 @@
 package biz
 
-import "context"
+import (
+	"context"
+	"errors"
+)
+
+// ErrTeamNotSettleable 表示团队当前状态不允许继续结算：
+// 团队不存在、已结束（成功/失败）或完成人数已满。
+// 仓储层用它让上层（Saga）明确感知"本次没有实际推进"，从而触发补偿。
+var ErrTeamNotSettleable = errors.New("team is not in a settleable state")
 
 type ActivityRepo interface {
 	GetActivity(ctx context.Context, activityID string) (*GroupBuyActivity, error)
@@ -18,7 +26,17 @@ type OrderRepo interface {
 type TeamRepo interface {
 	CreateTeam(ctx context.Context, team *GroupBuyTeam) error
 	GetTeam(ctx context.Context, teamID string) (*GroupBuyTeam, error)
-	IncrementTeamComplete(ctx context.Context, teamID string) (int32, error)
+
+	// CompleteTeam 原子地把完成数 +1；达到目标人数时把团队状态流转为 successState。
+	// 返回 (最新完成数, 是否本次触发成团, error)。
+	//
+	// "本次触发成团"仅在本次调用真正把状态从"进行中"改为"成团"时为真，
+	// 用于保证成团通知只创建一次——重复结算不会重复发奖/通知（幂等）。
+	CompleteTeam(ctx context.Context, teamID string, targetCount, successState int32) (int32, bool, error)
+
+	// RollbackTeamComplete 回滚完成数与团队状态，供 Saga 补偿使用。
+	// 回滚后团队回到"进行中"，后续重试可以重新成团并补发通知。
+	RollbackTeamComplete(ctx context.Context, teamID string, buildingState int32) error
 }
 
 type RedisRepo interface {
