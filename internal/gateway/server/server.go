@@ -15,15 +15,16 @@ import (
 func NewHTTPServer(c *conf.Server, gatewaySvc *gateway.Service) *kratoshttp.Server {
 	// 注意：Kratos v3 的 http.Middleware() 不会作用于 srv.HandleFunc 注册的原生
 	// handler，所以中间件必须统一走 http.Filter()（net/http 风格）才能生效。
-	var opts = []kratoshttp.ServerOption{kratoshttp.Filter(middleware.Recovery())}
+	// 请求级指标（QPS、耗时、状态码）随每个业务请求自增，供 Grafana 大盘消费。
+	var opts = []kratoshttp.ServerOption{kratoshttp.Filter(middleware.Recovery(), middleware.MetricsFilter("gateway"))}
 	if c.GetHttp().GetNetwork() != "" {
 		opts = append(opts, kratoshttp.Network(c.GetHttp().GetNetwork()))
 	}
 	if c.GetHttp().GetAddr() != "" {
 		opts = append(opts, kratoshttp.Address(c.GetHttp().GetAddr()))
 	}
-	if c.GetHttp().GetTimeout() != 0 {
-		opts = append(opts, kratoshttp.Timeout(c.GetHttp().GetTimeout()))
+	if t := c.GetHttp().GetTimeout().AsDuration(); t != 0 {
+		opts = append(opts, kratoshttp.Timeout(t))
 	}
 	srv := kratoshttp.NewServer(opts...)
 
@@ -52,6 +53,7 @@ func NewHTTPServer(c *conf.Server, gatewaySvc *gateway.Service) *kratoshttp.Serv
 			"status": "ok", "service": "gateway", "time": time.Now().Format(time.RFC3339),
 		})
 	})
+	srv.HandleFunc("/metrics", middleware.MetricsEndpoint().ServeHTTP)
 
 	return srv
 }

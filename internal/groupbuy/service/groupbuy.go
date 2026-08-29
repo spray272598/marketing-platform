@@ -4,12 +4,17 @@ import (
 	"encoding/json"
 	"net/http"
 
+	v1 "github.com/marketing-platform/api/groupbuy/v1"
 	"github.com/marketing-platform/internal/groupbuy/biz"
 	"github.com/marketing-platform/pkg/auth"
 	"github.com/marketing-platform/pkg/common"
 )
 
+// GroupBuyService 同时实现 HTTP handler 与 gRPC 服务接口：
+// 内嵌 v1.UnimplementedGroupBuyServiceServer 以满足 gRPC 接口契约，
+// 具体的 RPC 方法见 grpc.go，与 HTTP handler 共享同一套 biz 调用。
 type GroupBuyService struct {
+	v1.UnimplementedGroupBuyServiceServer
 	trialSvc      *biz.TrialService
 	lockSvc       *biz.LockService
 	settlementSvc *biz.SettlementService

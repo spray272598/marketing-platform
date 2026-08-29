@@ -28,10 +28,13 @@ func NewHTTPServer(c *conf.Server, groupbuySvc *service.GroupBuyService) *http.S
 	if err != nil {
 		slog.Error("auth: failed to initialize authenticator", slog.Any("error", err))
 	} else if authenticator != nil {
-		// /health 用于探活；内部接口改用内部服务令牌校验。
+		// /health 用于探活；内部接口改用内部服务令牌校验；/metrics 供 Prometheus 抓取。
 		filters = append(filters, auth.Middleware(authenticator,
-			auth.SkipPaths(append([]string{"/health"}, internalPaths...)...)))
+			auth.SkipPaths(append([]string{"/health", "/metrics"}, internalPaths...)...)))
 	}
+
+	// 请求级指标（QPS、耗时、状态码）随每个业务请求自增，供 Grafana 大盘消费。
+	filters = append(filters, middleware.MetricsFilter("groupbuy-market"))
 
 	var opts = []http.ServerOption{http.Filter(filters...)}
 	if c.GetHttp().GetNetwork() != "" {
@@ -40,8 +43,8 @@ func NewHTTPServer(c *conf.Server, groupbuySvc *service.GroupBuyService) *http.S
 	if c.GetHttp().GetAddr() != "" {
 		opts = append(opts, http.Address(c.GetHttp().GetAddr()))
 	}
-	if c.GetHttp().GetTimeout() != 0 {
-		opts = append(opts, http.Timeout(c.GetHttp().GetTimeout()))
+	if t := c.GetHttp().GetTimeout().AsDuration(); t != 0 {
+		opts = append(opts, http.Timeout(t))
 	}
 	srv := http.NewServer(opts...)
 
@@ -56,6 +59,7 @@ func NewHTTPServer(c *conf.Server, groupbuySvc *service.GroupBuyService) *http.S
 		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte(`{"status":"ok","service":"group-buy-market"}`))
 	})
+	srv.HandleFunc("/metrics", middleware.MetricsEndpoint().ServeHTTP)
 
 	return srv
 }

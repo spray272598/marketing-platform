@@ -16,15 +16,17 @@ import (
 func NewHTTPServer(c *conf.Server, stockSvc *service.StockService) *http.Server {
 	// 注意：Kratos v3 的 http.Middleware() 不会作用于 srv.HandleFunc 注册的原生
 	// handler，所以中间件必须统一走 http.Filter()（net/http 风格）才能生效。
-	var opts = []http.ServerOption{http.Filter(middleware.Recovery())}
+	// 请求级指标（QPS、耗时、状态码）随每个业务请求自增，供 Grafana 大盘消费。
+	filters := []http.FilterFunc{middleware.Recovery(), middleware.MetricsFilter("stock-market")}
+	var opts = []http.ServerOption{http.Filter(filters...)}
 	if c.GetHttp().GetNetwork() != "" {
 		opts = append(opts, http.Network(c.GetHttp().GetNetwork()))
 	}
 	if c.GetHttp().GetAddr() != "" {
 		opts = append(opts, http.Address(c.GetHttp().GetAddr()))
 	}
-	if c.GetHttp().GetTimeout() != 0 {
-		opts = append(opts, http.Timeout(c.GetHttp().GetTimeout()))
+	if t := c.GetHttp().GetTimeout().AsDuration(); t != 0 {
+		opts = append(opts, http.Timeout(t))
 	}
 	srv := http.NewServer(opts...)
 
@@ -50,6 +52,7 @@ func NewHTTPServer(c *conf.Server, stockSvc *service.StockService) *http.Server 
 		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte(`{"status":"ok","service":"stock-market"}`))
 	})
+	srv.HandleFunc("/metrics", middleware.MetricsEndpoint().ServeHTTP)
 
 	return srv
 }

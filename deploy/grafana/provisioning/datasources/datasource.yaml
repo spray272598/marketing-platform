@@ -1,0 +1,13 @@
+apiVersion: 1
+
+# 自动把 Prometheus 注册为默认数据源，使 Grafana 容器启动即可用，
+# 无需人工在 UI 里手动添加（避免“部署了但用不了”的空壳）。
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: true
+    jsonData:
+      httpMethod: POST

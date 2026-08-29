@@ -31,7 +31,8 @@ func wireApp(confServer *conf.Server, confData *conf.Data, logger *slog.Logger) 
 	tradeService := biz.NewTradeService(orderRepo, redisRepo, mqRepo, activityRepo, stockClient)
 	seckillService := service.NewSeckillService(tradeService, activityRepo)
 	httpServer := server.NewHTTPServer(confServer, seckillService)
-	app := newApp(logger, httpServer)
+	transportServer := server.NewGRPCServer(confServer, seckillService, logger)
+	app := newApp(logger, httpServer, transportServer)
 	return app, func() {
 		cleanup()
 	}, nil

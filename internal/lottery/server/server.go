@@ -20,13 +20,17 @@ func NewHTTPServer(c *conf.Server, lotterySvc *service.LotteryService) *http.Ser
 	if err != nil {
 		slog.Error("auth: failed to initialize authenticator", slog.Any("error", err))
 	} else if authenticator != nil {
-		// 探活与活动/策略浏览接口无需登录；抽奖与查单必须携带令牌。
+		// 探活、活动/策略浏览接口与 /metrics 抓取端点无需登录；抽奖与查单必须携带令牌。
 		filters = append(filters, auth.Middleware(authenticator, auth.SkipPaths(
 			"/health",
+			"/metrics",
 			"/api/v1/lottery/activity/query",
 			"/api/v1/lottery/strategy/query",
 		)))
 	}
+
+	// 请求级指标（QPS、耗时、状态码）随每个业务请求自增，供 Grafana 大盘消费。
+	filters = append(filters, middleware.MetricsFilter("lottery-market"))
 
 	var opts = []http.ServerOption{http.Filter(filters...)}
 	if c.GetHttp().GetNetwork() != "" {
@@ -35,8 +39,8 @@ func NewHTTPServer(c *conf.Server, lotterySvc *service.LotteryService) *http.Ser
 	if c.GetHttp().GetAddr() != "" {
 		opts = append(opts, http.Address(c.GetHttp().GetAddr()))
 	}
-	if c.GetHttp().GetTimeout() != 0 {
-		opts = append(opts, http.Timeout(c.GetHttp().GetTimeout()))
+	if t := c.GetHttp().GetTimeout().AsDuration(); t != 0 {
+		opts = append(opts, http.Timeout(t))
 	}
 	srv := http.NewServer(opts...)
 
@@ -48,6 +52,7 @@ func NewHTTPServer(c *conf.Server, lotterySvc *service.LotteryService) *http.Ser
 		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte(`{"status":"ok","service":"lottery-market"}`))
 	})
+	srv.HandleFunc("/metrics", middleware.MetricsEndpoint().ServeHTTP)
 
 	return srv
 }

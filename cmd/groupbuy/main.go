@@ -12,6 +12,7 @@ import (
 	"github.com/go-kratos/kratos/v3/config/env"
 	"github.com/go-kratos/kratos/v3/config/file"
 	kratoslog "github.com/go-kratos/kratos/v3/log"
+	"github.com/go-kratos/kratos/v3/transport"
 	"github.com/go-kratos/kratos/v3/transport/http"
 )
 
@@ -24,12 +25,12 @@ func init() {
 	flag.StringVar(&flagconf, "conf", "../../configs/groupbuy", "config path, eg: -conf config.yaml")
 }
 
-func newApp(logger *slog.Logger, hs *http.Server) *kratos.App {
+func newApp(logger *slog.Logger, hs *http.Server, gs transport.Server) *kratos.App {
 	return kratos.New(
 		kratos.ID(id),
 		kratos.Name("groupbuy"),
 		kratos.Logger(logger),
-		kratos.Server(hs),
+		kratos.Server(hs, gs),
 	)
 }
 

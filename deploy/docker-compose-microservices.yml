@@ -66,8 +66,12 @@ services:
     environment:
       - GF_SECURITY_ADMIN_USER=admin
       - GF_SECURITY_ADMIN_PASSWORD=admin
+      # 通过挂载的 provisioning 自动注册 Prometheus 数据源与大盘，启动即可用。
+      - GF_INSTALL_PLUGINS=grafana-piechart-panel
     ports:
       - "3000:3000"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning
     depends_on:
       - prometheus
     networks:

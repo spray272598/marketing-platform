@@ -4,12 +4,15 @@ import (
 	"encoding/json"
 	"net/http"
 
+	v1 "github.com/marketing-platform/api/lottery/v1"
 	"github.com/marketing-platform/internal/lottery/biz"
 	"github.com/marketing-platform/pkg/auth"
 	"github.com/marketing-platform/pkg/common"
 )
 
+// LotteryService 同时实现 HTTP handler 与 gRPC 服务接口；gRPC 方法见 grpc.go。
 type LotteryService struct {
+	v1.UnimplementedLotteryServiceServer
 	raffleSvc *biz.RaffleService
 }
 

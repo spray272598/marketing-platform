@@ -1,0 +1,140 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "graphTooltip": 1,
+  "id": null,
+  "schemaVersion": 36,
+  "style": "dark",
+  "tags": ["marketing", "microservice"],
+  "templating": {
+    "list": [
+      {
+        "name": "service",
+        "type": "query",
+        "datasource": "Prometheus",
+        "query": "label_values(up, job)",
+        "refresh": 1,
+        "includeAll": false,
+        "multi": false,
+        "current": { "text": "seckill_market", "value": "seckill_market" },
+        "hide": 0
+      }
+    ]
+  },
+  "time": { "from": "now-1h", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Marketing Platform Overview",
+  "uid": "marketing-overview",
+  "version": 1,
+  "panels": [
+    {
+      "id": 1,
+      "title": "Request Rate (QPS)",
+      "type": "timeseries",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 0 },
+      "fieldConfig": {
+        "defaults": { "unit": "ops", "custom": { "drawStyle": "line", "fillOpacity": 10 } },
+        "overrides": []
+      },
+      "targets": [
+        { "expr": "sum(rate($service_http_requests_total[5m]))", "legendFormat": "qps" }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Request Duration p95 (s)",
+      "type": "timeseries",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 0 },
+      "fieldConfig": {
+        "defaults": { "unit": "s", "custom": { "drawStyle": "line", "fillOpacity": 10 } },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate($service_http_request_duration_seconds_bucket[5m])) by (le))",
+          "legendFormat": "p95"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "HTTP Status Codes",
+      "type": "timeseries",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 0 },
+      "fieldConfig": {
+        "defaults": { "unit": "short", "custom": { "drawStyle": "line", "fillOpacity": 10 } },
+        "overrides": []
+      },
+      "targets": [
+        { "expr": "sum by (status) (rate($service_http_requests_status_total[5m]))", "legendFormat": "{{status}}" }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Goroutines",
+      "type": "timeseries",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 8 },
+      "fieldConfig": {
+        "defaults": { "unit": "short", "custom": { "drawStyle": "line", "fillOpacity": 10 } },
+        "overrides": []
+      },
+      "targets": [
+        { "expr": "go_goroutines{job=\"$service\"}", "legendFormat": "goroutines" }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Heap In-Use (bytes)",
+      "type": "timeseries",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 8 },
+      "fieldConfig": {
+        "defaults": { "unit": "bytes", "custom": { "drawStyle": "line", "fillOpacity": 10 } },
+        "overrides": []
+      },
+      "targets": [
+        { "expr": "go_memstats_heap_inuse_bytes{job=\"$service\"}", "legendFormat": "heap_inuse" }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "GC Pause Rate (s/s)",
+      "type": "timeseries",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 8 },
+      "fieldConfig": {
+        "defaults": { "unit": "s", "custom": { "drawStyle": "line", "fillOpacity": 10 } },
+        "overrides": []
+      },
+      "targets": [
+        { "expr": "rate(go_gc_duration_seconds_sum{job=\"$service\"}[5m])", "legendFormat": "gc_pause_rate" }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Service Up",
+      "type": "stat",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 4, "w": 24, "x": 0, "y": 16 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "statStyles": {},
+            "thresholdsStyle": { "mode": "Background" }
+          },
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": 0 }, { "color": "green", "value": 1 } ] }
+        },
+        "overrides": []
+      },
+      "targets": [
+        { "expr": "up{job=\"$service\"}", "legendFormat": "{{job}}" }
+      ]
+    }
+  ]
+}

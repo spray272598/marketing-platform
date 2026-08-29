@@ -1,0 +1,13 @@
+apiVersion: 1
+
+# 把本目录下的 JSON 大盘自动加载为 “Marketing” 文件夹，
+# 同样免去首次启动时手工导入的繁琐。
+providers:
+  - name: marketing
+    orgId: 1
+    folder: Marketing
+    type: file
+    disableDeletion: false
+    editable: true
+    options:
+      path: /etc/grafana/provisioning/dashboards

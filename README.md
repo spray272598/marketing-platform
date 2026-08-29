@@ -37,11 +37,15 @@ common concerns (identity, transactions, IDs, metrics) are solved once.
   compensation, plus a local outbox / RabbitMQ pipeline for eventual consistency.
 - **Global, monotonic IDs** — Meituan Leaf "segment mode" for cross-service
   unique, increasing order IDs.
-- **Observability** — Prometheus metrics, an in-process trace collector, and
-  structured `slog` logging, behind a reusable middleware chain.
+- **Observability** — Prometheus metrics + **Grafana** dashboards
+  (datasource & panels auto-provisioned on startup), an in-process trace
+  collector, and structured `slog` logging, behind a reusable middleware chain.
+- **Dual protocol (HTTP + gRPC)** — every business service exposes both a
+  REST/JSON HTTP API and an equivalent gRPC service, with shared `user_id`
+  injection and JWT + internal-token auth on both transports.
 - **Config center** — Nacos for externalized, environment-aware configuration.
 - **One-command deployment** — Docker Compose brings up MySQL, Redis,
-  RabbitMQ, Nacos, Prometheus and all five services.
+  RabbitMQ, Nacos, Prometheus, **Grafana** and all five services.
 
 ---
 
@@ -61,24 +65,24 @@ common concerns (identity, transactions, IDs, metrics) are solved once.
             ┌──────────────────────────┼──────────────────────────┐
             │                          │                          │
             ▼                          ▼                          ▼
-   ┌─────────────────┐      ┌─────────────────┐      ┌─────────────────┐
-   │ seckill :18091  │      │ groupbuy :18092 │      │ lottery  :18093  │
-   │  (flash sale)   │      │   (group buy)   │      │    (lottery)     │
-   └────────┬────────┘      └────────┬────────┘      └────────┬────────┘
-            │  X-Internal-Token       │  X-Internal-Token      │
-            └─────────────┬───────────┴───────────┬───────────┘
-                          ▼                       ▼
+   ┌──────────────────────┐  ┌──────────────────────┐  ┌──────────────────────┐
+   │ seckill :18091/:18095 │  │ groupbuy :18092/:18096│  │ lottery  :18093/:18097│
+   │  HTTP / gRPC (flash)  │  │  HTTP / gRPC (group)  │  │   HTTP / gRPC (lotto) │
+   └────────┬──────────────┘  └────────┬──────────────┘  └────────┬──────────────┘
+            │  X-Internal-Token         │  X-Internal-Token        │
+            └─────────────┬─────────────┴───────────┬─────────────┘
+                          ▼                         ▼
                  ┌─────────────────┐    ┌──────────────────────┐
                  │  stock :18094   │    │  RabbitMQ (outbox)   │
                  │ (shared stock)  │    │  eventual consistency│
                  └────────┬────────┘    └──────────┬───────────┘
                           │                        │
-        ┌─────────────────┼────────────────────────┼─────────────────┐
-        ▼                 ▼                        ▼                 ▼
-   ┌──────────┐    ┌──────────────┐        ┌────────────┐   ┌────────────┐
-   │  MySQL   │    │    Redis 7    │        │    Nacos   │   │ Prometheus │
-   │ (per ctx)│    │ (Lua deduct) │        │  config    │   │  metrics   │
-   └──────────┘    └──────────────┘        └────────────┘   └────────────┘
+        ┌─────────────────┼────────────────────────┼───────────────┐
+        ▼                 ▼                        ▼               ▼
+   ┌──────────┐    ┌──────────────┐        ┌────────────┐  ┌──────────────┐
+   │  MySQL   │    │    Redis 7    │        │    Nacos   │  │ Prometheus /  │
+   │ (per ctx)│    │ (Lua deduct) │        │  config    │  │   Grafana     │
+   └──────────┘    └──────────────┘        └────────────┘  └──────────────┘
 ```
 
 Each business service owns its own MySQL database (seckill / groupbuy /
@@ -102,7 +106,9 @@ the `/metrics` endpoint exposed by every service.
 | Message queue      | RabbitMQ (outbox / async events)                       |
 | Config center      | Nacos (`nacos-group/nacos-sdk-go/v2`)                 |
 | Rate limiting      | Token bucket (`golang.org/x/time/rate`)                |
+| RPC / dual protocol| gRPC (`google.golang.org/grpc`), protobuf, Wire DI     |
 | Observability      | Prometheus client, in-process trace collector, `slog`  |
+| Visualization      | Grafana (datasource & dashboard auto-provisioning)     |
 | Containerization   | Docker Compose                                         |
 
 ---
@@ -242,7 +248,11 @@ http.Handler`, so it is testable and reorderable independently.
 
 - **Metrics**: Prometheus counters/histograms for request total, duration,
   status, DB connections, cache hit-rate, and per-business gauges, exposed at
-  `/metrics` for scraping.
+  `/metrics` on **both** the HTTP and gRPC ports of every service for scraping.
+- **Dashboards**: Grafana is auto-provisioned on startup — a Prometheus
+  datasource and a `Marketing / Marketing Platform Overview` dashboard
+  (QPS, p95 latency, status codes, goroutines, heap, GC) are loaded from
+  `deploy/grafana/provisioning/` with no manual UI setup.
 - **Tracing**: an in-process `TraceCollector` builds a span tree
   (trace/span/parent, tags, logs) propagated through the middleware chain.
 - **Logging**: structured `slog` output, wired through Kratos' logger.
@@ -264,7 +274,7 @@ http.Handler`, so it is testable and reorderable independently.
 ### Option A — Docker Compose (full stack)
 
 ```bash
-# Bring up MySQL, Redis, RabbitMQ, Nacos, Prometheus and all five services.
+# Bring up MySQL, Redis, RabbitMQ, Nacos, Prometheus, Grafana and all five services.
 docker compose -f deploy/docker-compose-microservices.yml up -d
 
 # Tail logs
@@ -273,6 +283,15 @@ docker compose -f deploy/docker-compose-microservices.yml logs -f
 # Tear down
 docker compose -f deploy/docker-compose-microservices.yml down
 ```
+
+After the stack is up:
+
+- **Grafana** dashboards: <http://localhost:3000> (admin / admin).
+- **Prometheus** UI: <http://localhost:9090>.
+- **Metrics** (Prometheus scrape targets): `/metrics` on every service
+  (HTTP `:18091`–`:18094`, gRPC `:18095`–`:18097`).
+- **gRPC** endpoints are served alongside HTTP on each business service
+  (seckill `:18095`, groupbuy `:18096`, lottery `:18097`).
 
 Set the auth secrets before starting (defaults are dev placeholders):
 
@@ -423,8 +442,9 @@ Implemented:
 - [x] Leaf segment-mode global IDs
 - [x] Local outbox + RabbitMQ eventual consistency
 - [x] Nacos config center
-- [x] Observability: Prometheus metrics, trace collector, `slog`
-- [x] Docker Compose full-stack deployment
+- [x] Observability: Prometheus metrics, Grafana auto-provisioned dashboards, trace collector, `slog`
+- [x] Dual protocol: HTTP + gRPC on every business service, shared auth
+- [x] Docker Compose full-stack deployment (incl. Prometheus + Grafana)
 
 Planned:
 

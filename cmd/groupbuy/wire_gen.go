@@ -37,7 +37,8 @@ func wireApp(confServer *conf.Server, confData *conf.Data, logger *slog.Logger) 
 	refundService := biz.NewRefundService(orderRepo, notifyService, stockClient)
 	groupBuyService := service.NewGroupBuyService(trialService, lockService, settlementService, refundService)
 	httpServer := server.NewHTTPServer(confServer, groupBuyService)
-	app := newApp(logger, httpServer)
+	transportServer := server.NewGRPCServer(confServer, groupBuyService, logger)
+	app := newApp(logger, httpServer, transportServer)
 	return app, func() {
 		cleanup()
 	}, nil

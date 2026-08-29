@@ -4,21 +4,31 @@ global:
 
 scrape_configs:
   - job_name: 'gateway'
+    metrics_path: /metrics
     static_configs:
       - targets: ['gateway:8080']
 
-  - job_name: 'seckill-market'
+  - job_name: 'seckill_market'
+    metrics_path: /metrics
     static_configs:
       - targets: ['seckill-market:18091']
 
-  - job_name: 'groupbuy-market'
+  - job_name: 'groupbuy_market'
+    metrics_path: /metrics
     static_configs:
       - targets: ['groupbuy-market:18092']
 
-  - job_name: 'lottery-market'
+  - job_name: 'lottery_market'
+    metrics_path: /metrics
     static_configs:
       - targets: ['lottery-market:18093']
 
-  - job_name: 'stock-market'
+  - job_name: 'stock_market'
+    metrics_path: /metrics
     static_configs:
       - targets: ['stock-market:18094']
+
+  - job_name: 'grafana'
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['grafana:3000']

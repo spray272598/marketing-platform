@@ -6,6 +6,9 @@ bin/
 *.so
 *.dylib
 
+# Local protoc plugin cache (build artifact, not source)
+.gobin/
+
 # Test binary
 *.test
 

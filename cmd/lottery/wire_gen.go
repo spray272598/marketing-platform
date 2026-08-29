@@ -29,7 +29,8 @@ func wireApp(confServer *conf.Server, confData *conf.Data, logger *slog.Logger) 
 	raffleService := biz.NewRaffleService(activityRepo, strategyRepo, orderRepo)
 	lotteryService := service.NewLotteryService(raffleService)
 	httpServer := server.NewHTTPServer(confServer, lotteryService)
-	app := newApp(logger, httpServer)
+	transportServer := server.NewGRPCServer(confServer, lotteryService, logger)
+	app := newApp(logger, httpServer, transportServer)
 	return app, func() {
 		cleanup()
 	}, nil
