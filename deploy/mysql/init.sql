@@ -63,6 +63,18 @@ CREATE TABLE seckill_order (
     UNIQUE KEY uk_user_activity (user_id, activity_id)
 ) COMMENT '秒杀订单表';
 
+-- 号段模式全局订单号分配表（美团 Leaf segment 模式）
+CREATE TABLE IF NOT EXISTS id_segment (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    biz_tag VARCHAR(32) NOT NULL COMMENT '业务标签',
+    max_id BIGINT NOT NULL DEFAULT 0 COMMENT '当前已分配的最大 ID',
+    step INT NOT NULL DEFAULT 1000 COMMENT '每次分配的号段长度',
+    update_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_biz_tag (biz_tag)
+) COMMENT '号段模式 ID 分配表';
+INSERT INTO id_segment (biz_tag, max_id, step) VALUES ('order', 0, 1000)
+ON DUPLICATE KEY UPDATE biz_tag = biz_tag;
+
 -- 创建拼团库
 CREATE DATABASE IF NOT EXISTS marketing_groupbuy;
 USE marketing_groupbuy;
@@ -105,6 +117,18 @@ CREATE TABLE groupbuy_order (
     UNIQUE KEY uk_order_id (order_id),
     UNIQUE KEY uk_biz_id (biz_id)
 ) COMMENT '拼团订单表';
+
+-- 号段模式全局订单号分配表（美团 Leaf segment 模式）
+CREATE TABLE IF NOT EXISTS id_segment (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    biz_tag VARCHAR(32) NOT NULL COMMENT '业务标签',
+    max_id BIGINT NOT NULL DEFAULT 0 COMMENT '当前已分配的最大 ID',
+    step INT NOT NULL DEFAULT 1000 COMMENT '每次分配的号段长度',
+    update_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_biz_tag (biz_tag)
+) COMMENT '号段模式 ID 分配表';
+INSERT INTO id_segment (biz_tag, max_id, step) VALUES ('order', 0, 1000)
+ON DUPLICATE KEY UPDATE biz_tag = biz_tag;
 
 CREATE TABLE groupbuy_team (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
@@ -185,3 +209,15 @@ CREATE TABLE lottery_order (
     update_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     UNIQUE KEY uk_order_id (order_id)
 ) COMMENT '抽奖订单表';
+
+-- 号段模式全局订单号分配表（美团 Leaf segment 模式）
+CREATE TABLE IF NOT EXISTS id_segment (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    biz_tag VARCHAR(32) NOT NULL COMMENT '业务标签',
+    max_id BIGINT NOT NULL DEFAULT 0 COMMENT '当前已分配的最大 ID',
+    step INT NOT NULL DEFAULT 1000 COMMENT '每次分配的号段长度',
+    update_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_biz_tag (biz_tag)
+) COMMENT '号段模式 ID 分配表';
+INSERT INTO id_segment (biz_tag, max_id, step) VALUES ('order', 0, 1000)
+ON DUPLICATE KEY UPDATE biz_tag = biz_tag;

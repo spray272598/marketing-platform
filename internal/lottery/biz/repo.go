@@ -18,4 +18,6 @@ type StrategyRepo interface {
 type OrderRepo interface {
 	CreateOrder(ctx context.Context, order *LotteryOrder) error
 	GetUserActivityCount(ctx context.Context, userID int64, activityID string) (int32, error)
+	// NextOrderID 基于号段模式返回当前服务的下一个订单号（单调递增）。
+	NextOrderID(ctx context.Context, bizTag string) (int64, error)
 }

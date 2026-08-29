@@ -35,6 +35,7 @@ func (m *mockGBActivityRepo) GetDiscount(ctx context.Context, discountID string)
 type mockGBOrderRepo struct {
 	mu     sync.RWMutex
 	orders map[string]*GroupBuyOrder
+	seq    int64
 }
 
 func newMockGBOrderRepo() *mockGBOrderRepo {
@@ -67,6 +68,13 @@ func (m *mockGBOrderRepo) UpdateOrderState(ctx context.Context, orderID string, 
 		return nil
 	}
 	return fmt.Errorf("order not found")
+}
+
+func (m *mockGBOrderRepo) NextOrderID(ctx context.Context, bizTag string) (int64, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.seq++
+	return m.seq, nil
 }
 
 type mockTeamRepo struct {

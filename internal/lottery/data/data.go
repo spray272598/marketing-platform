@@ -2,6 +2,7 @@ package data
 
 import (
 	"context"
+	"database/sql"
 
 	"github.com/marketing-platform/internal/conf"
 	"github.com/marketing-platform/internal/lottery/data/ent"
@@ -13,7 +14,8 @@ import (
 var ProviderSet = wire.NewSet(NewData, NewActivityRepo, NewStrategyRepo, NewOrderRepo)
 
 type Data struct {
-	db *ent.Client
+	db    *ent.Client
+	sqldb *sql.DB
 }
 
 func NewData(c *conf.Data) (*Data, func(), error) {
@@ -22,17 +24,28 @@ func NewData(c *conf.Data) (*Data, func(), error) {
 	if err != nil {
 		return nil, nil, err
 	}
+	// 原生 *sql.DB：号段模式(ID 分配)等需要跑原生 SQL 事务的场景使用，
+	// 与 Ent 共用同一 DSN，独立连接池。
+	sqldb, err := sql.Open("mysql", dc.GetSource())
+	if err != nil {
+		db.Close()
+		return nil, nil, err
+	}
 	if dc.GetDebug() {
 		db = db.Debug()
 	}
 	if dc.GetAutoMigrate() {
 		if err := db.Schema.Create(context.Background()); err != nil {
+			sqldb.Close()
 			db.Close()
 			return nil, nil, err
 		}
 	}
-	cleanup := func() { db.Close() }
-	return &Data{db: db}, cleanup, nil
+	cleanup := func() {
+		db.Close()
+		sqldb.Close()
+	}
+	return &Data{db: db, sqldb: sqldb}, cleanup, nil
 }
 
 func (d *Data) HealthCheck(ctx context.Context) map[string]bool {

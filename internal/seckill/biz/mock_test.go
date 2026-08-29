@@ -34,6 +34,7 @@ func (m *mockActivityRepo) UpdateActivityStock(ctx context.Context, activityID s
 type mockOrderRepo struct {
 	mu     sync.RWMutex
 	orders map[string]*SeckillOrder
+	seq    int64
 }
 
 func newMockOrderRepo() *mockOrderRepo {
@@ -77,6 +78,13 @@ func (m *mockOrderRepo) UpdateOrderState(ctx context.Context, orderID string, st
 		return nil
 	}
 	return fmt.Errorf("order not found")
+}
+
+func (m *mockOrderRepo) NextOrderID(ctx context.Context, bizTag string) (int64, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.seq++
+	return m.seq, nil
 }
 
 type mockRedisRepo struct {

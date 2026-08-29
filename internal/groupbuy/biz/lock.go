@@ -48,8 +48,12 @@ func (s *LockService) LockOrder(ctx context.Context, activityID string, userID i
 	}
 	defer s.redisRepo.UnlockOrder(ctx, lockKey, lockValue)
 
+	id, err := s.orderRepo.NextOrderID(ctx, "order")
+	if err != nil {
+		return nil, fmt.Errorf("generate order id failed: %w", err)
+	}
 	order := &GroupBuyOrder{
-		OrderID:    fmt.Sprintf("gb_%s", uuid.New().String()[:12]),
+		OrderID:    fmt.Sprintf("gb_%019d", id),
 		TeamID:     fmt.Sprintf("team_%s", uuid.New().String()[:12]),
 		UserID:     userID,
 		ActivityID: activity.ActivityID,

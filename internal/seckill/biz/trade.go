@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/marketing-platform/pkg/common"
 )
 
@@ -84,8 +83,14 @@ func (s *TradeService) CreateSeckillOrder(ctx context.Context, activityID string
 		return nil, fmt.Errorf("%s: %w", common.SeckillStockNotEnough.Code, err)
 	}
 
+	id, err := s.orderRepo.NextOrderID(ctx, "order")
+	if err != nil {
+		_ = s.stockClient.RestoreStock(ctx, stockKey, 1)
+		_ = s.redisRepo.IncrStock(ctx, activityID, 1)
+		return nil, fmt.Errorf("generate order id failed: %w", err)
+	}
 	order := &SeckillOrder{
-		OrderID:    fmt.Sprintf("sk_%s", uuid.New().String()[:12]),
+		OrderID:    fmt.Sprintf("sk_%019d", id),
 		ActivityID: activityID,
 		UserID:     userID,
 		SkuID:      activity.SkuID,

@@ -6,7 +6,6 @@ import (
 	"math/rand"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/marketing-platform/pkg/common"
 )
 
@@ -86,8 +85,15 @@ func (s *RaffleService) Raffle(ctx context.Context, activityID string, userID in
 		won = ok
 	}
 
+	id, err := s.orderRepo.NextOrderID(ctx, "order")
+	if err != nil {
+		if won {
+			_ = s.strategyRepo.RestoreAwardStock(ctx, award.AwardID)
+		}
+		return nil, fmt.Errorf("generate order id failed: %w", err)
+	}
 	order := &LotteryOrder{
-		OrderID:    fmt.Sprintf("lt_%s", uuid.New().String()[:12]),
+		OrderID:    fmt.Sprintf("lt_%019d", id),
 		ActivityID: activityID,
 		UserID:     userID,
 		AwardState: 0,

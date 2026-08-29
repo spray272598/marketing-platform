@@ -11,6 +11,8 @@ type OrderRepo interface {
 	CreateOrder(ctx context.Context, order *SeckillOrder) error
 	GetOrder(ctx context.Context, orderID string) (*SeckillOrder, error)
 	UpdateOrderState(ctx context.Context, orderID string, state int32) error
+	// NextOrderID 基于号段模式返回当前服务的下一个订单号（单调递增）。
+	NextOrderID(ctx context.Context, bizTag string) (int64, error)
 }
 
 type RedisRepo interface {

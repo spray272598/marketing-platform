@@ -89,6 +89,7 @@ type mockLTOrderRepo struct {
 	mu     sync.RWMutex
 	orders map[string]*LotteryOrder
 	counts map[string]int32
+	seq    int64
 }
 
 func newMockLTOrderRepo() *mockLTOrderRepo {
@@ -112,4 +113,11 @@ func (m *mockLTOrderRepo) GetUserActivityCount(ctx context.Context, userID int64
 	defer m.mu.RUnlock()
 	key := fmt.Sprintf("%d_%s", userID, activityID)
 	return m.counts[key], nil
+}
+
+func (m *mockLTOrderRepo) NextOrderID(ctx context.Context, bizTag string) (int64, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.seq++
+	return m.seq, nil
 }

@@ -2,6 +2,7 @@ package data
 
 import (
 	"context"
+	"database/sql"
 
 	"github.com/marketing-platform/internal/conf"
 	"github.com/marketing-platform/internal/groupbuy/biz"
@@ -29,6 +30,7 @@ var ProviderSet = wire.NewSet(
 // Data holds the long-lived storage clients shared by repos.
 type Data struct {
 	db      *ent.Client
+	sqldb   *sql.DB
 	rdb     *redis.Client
 	conn    *amqp.Connection
 	channel *amqp.Channel
@@ -41,11 +43,19 @@ func NewData(c *conf.Data) (*Data, func(), error) {
 	if err != nil {
 		return nil, nil, err
 	}
+	// 原生 *sql.DB：号段模式(ID 分配)等需要跑原生 SQL 事务的场景使用，
+	// 与 Ent 共用同一 DSN，独立连接池。
+	sqldb, err := sql.Open("mysql", dc.GetSource())
+	if err != nil {
+		db.Close()
+		return nil, nil, err
+	}
 	if dc.GetDebug() {
 		db = db.Debug()
 	}
 	if dc.GetAutoMigrate() {
 		if err := db.Schema.Create(context.Background()); err != nil {
+			sqldb.Close()
 			db.Close()
 			return nil, nil, err
 		}
@@ -88,9 +98,10 @@ func NewData(c *conf.Data) (*Data, func(), error) {
 		}
 		rdb.Close()
 		db.Close()
+		sqldb.Close()
 	}
 
-	return &Data{db: db, rdb: rdb, conn: conn, channel: ch}, cleanup, nil
+	return &Data{db: db, sqldb: sqldb, rdb: rdb, conn: conn, channel: ch}, cleanup, nil
 }
 
 func (d *Data) HealthCheck(ctx context.Context) map[string]bool {
