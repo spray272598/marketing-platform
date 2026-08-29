@@ -97,7 +97,7 @@ return 1  -- 成功
 - 全局限流：基于 `golang.org/x/time/rate` 的令牌桶，按IP维度限流
 - Redis原子限流：秒杀接口可叠加Redis计数器限流
 
-## 六、秋招面试亮点
+## 六、Design Highlights
 
 1. **Redis Lua原子操作**：秒杀库存扣减 + 一人一单原子校验，天然防止超卖和重复下单
 2. **DDD六边形架构**：领域层纯净，依赖倒置，Repository接口可替换

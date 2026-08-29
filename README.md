@@ -1,123 +1,193 @@
-# 营销中台 - Go微服务
+# Marketing Platform — Go Microservices
 
-基于DDD六边形架构的Go微服务营销中台，包含秒杀、拼团、抽奖三大核心服务。
+[![Go](https://img.shields.io/badge/Go-1.25-00ADD8?logo=go)](https://go.dev)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-## 架构图
+A marketing middle-platform built with Go microservices. It delivers three
+high-frequency promotional scenarios — **flash sale (seckill)**, **group buy**,
+and **lottery** — on top of a shared **stock service**, a unified API
+**gateway**, and an event-driven consistency layer.
 
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│                          客户端 / 前端                               │
-└─────────────────────────────────────────────────────────────────────┘
-                                    │
-                                    ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│                          Gateway (port: 8080)                       │
-│                     统一入口，路由到各微服务                           │
-└─────────────────────────────────────────────────────────────────────┘
-                                    │
-        ┌───────────────────────────┼───────────────────────────┐
-        │                           │                           │
-        ▼                           ▼                           ▼
-┌───────────────┐          ┌───────────────┐          ┌───────────────┐
-│  seckill:18091 │          │ groupbuy:18092 │          │ lottery:18093 │
-│   (秒杀服务)   │          │   (拼团服务)   │          │   (抽奖服务)   │
-└───────┬───────┘          └───────┬───────┘          └───────┬───────┘
-        │                           │                           │
-        └───────────────────────────┼───────────────────────────┘
-                                    │
-                ┌───────────────────┼───────────────────────────┐
-                │                   │                           │
-                ▼                   ▼                           ▼
-        ┌──────────────┐  ┌──────────────┐           ┌──────────────┐
-        │ stock:18094  │  │  MySQL 8.0   │           │  Redis 7.x   │
-        │ (公共库存服务) │  │  (数据存储)   │           │  (缓存/锁)   │
-        └──────────────┘  └──────────────┘           └──────────────┘
-```
+The project is organized around DDD bounded contexts, dependency inversion, and
+a small set of cross-cutting packages (`auth`, `saga`, `idgen`, `observability`,
+`middleware`) so that each business domain stays focused on its own rules while
+common concerns (identity, transactions, IDs, metrics) are solved once.
 
-## 技术栈
+> This repository is maintained as a long-term open-source engineering project
+> under the MIT license. Issues and discussions are welcome.
 
-| 组件 | 技术 | 说明 |
-|------|------|------|
-| 语言 | Go 1.22 | 高并发、高性能 |
-| HTTP | net/http | 标准库HTTP服务器 |
-| ORM | database/sql | 原生SQL |
-| 数据库 | MySQL 8.0 | 三库隔离 |
-| 缓存 | Redis 7.x | Lua原子操作、分布式锁 |
-| 消息队列 | RabbitMQ | 异步消息、最终一致性 |
-| 依赖注入 | Wire | 编译时依赖注入 |
-| 容器化 | Docker Compose | 一键部署 |
+---
 
-## 快速开始
+## Features
 
-### 方式一：Docker Compose一键启动（推荐）
+- **Flash sale (seckill)** — Redis-backed atomic stock deduction (Lua) on the
+  hot path, async order persistence via message queue, and timeout close-order
+  job.
+- **Group buy** — strategy-tree discount calculation, a responsibility-chain
+  trial/lock/settlement pipeline, and Saga-orchestrated settlement/refund with
+  compensating actions.
+- **Lottery** — rule-tree assembly, daily/monthly quota control, and prize
+  granting through the unified stock service.
+- **Unified stock service** — a single inventory abstraction shared by all three
+  scenarios, keyed by `stock_key` (`product:{sku}`, `team:{team_id}`,
+  `prize:{prize_id}`).
+- **Identity & trust** — JWT bearer auth for user-facing endpoints; an internal
+  token for inter-service calls. `user_id` is never taken from the request body.
+- **Distributed transactions** — orchestration-style Saga with reverse-order
+  compensation, plus a local outbox / RabbitMQ pipeline for eventual consistency.
+- **Global, monotonic IDs** — Meituan Leaf "segment mode" for cross-service
+  unique, increasing order IDs.
+- **Observability** — Prometheus metrics, an in-process trace collector, and
+  structured `slog` logging, behind a reusable middleware chain.
+- **Config center** — Nacos for externalized, environment-aware configuration.
+- **One-command deployment** — Docker Compose brings up MySQL, Redis,
+  RabbitMQ, Nacos, Prometheus and all five services.
 
-```bash
-# 启动所有服务（MySQL + Redis + RabbitMQ + 五个微服务）
-docker-compose -f deploy/docker-compose.yml up -d
+---
 
-# 查看日志
-docker-compose -f deploy/docker-compose.yml logs -f
-
-# 停止所有服务
-docker-compose -f deploy/docker-compose.yml down
-```
-
-### 方式二：本地开发
-
-```bash
-# 1. 启动基础设施
-docker-compose -f deploy/docker-compose-env.yml up -d
-
-# 2. 初始化数据库
-mysql -u root -proot < deploy/mysql/init.sql
-
-# 3. 启动服务（五个终端）
-go run cmd/seckill/main.go
-go run cmd/groupbuy/main.go
-go run cmd/lottery/main.go
-go run cmd/stock/main.go
-go run cmd/gateway/main.go
-```
-
-### 验证服务
-
-```bash
-# 健康检查
-curl http://localhost:8080/health
-curl http://localhost:18091/health
-curl http://localhost:18092/health
-curl http://localhost:18093/health
-curl http://localhost:18094/health
-
-# 秒杀下单
-curl -X POST http://localhost:18091/api/v1/seckill/order/create \
-  -H "Content-Type: application/json" \
-  -d '{"activity_id":"act_001","user_id":1001}'
-
-# 抽奖
-curl -X POST http://localhost:18093/api/v1/lottery/raffle \
-  -H "Content-Type: application/json" \
-  -d '{"activity_id":"act_001","user_id":1001}'
-
-# 通过网关访问
-curl http://localhost:8080/api/v1/gateway/proxy/?service=seckill&path=/health
-```
-
-## 核心设计
-
-### 1. DDD六边形架构 + 依赖倒置
+## Architecture
 
 ```
-biz (domain) 层定义接口
-    ↓ 依赖
-data (infrastructure) 层实现接口
+                         ┌──────────────────────────┐
+                         │      Clients / Web        │
+                         └─────────────┬────────────┘
+                                       │  JWT Bearer
+                                       ▼
+                         ┌──────────────────────────┐
+                         │   Gateway  (port 8080)     │
+                         │  route + reverse proxy     │
+                         │  JWT verify + body forward│
+                         └─────────────┬────────────┘
+            ┌──────────────────────────┼──────────────────────────┐
+            │                          │                          │
+            ▼                          ▼                          ▼
+   ┌─────────────────┐      ┌─────────────────┐      ┌─────────────────┐
+   │ seckill :18091  │      │ groupbuy :18092 │      │ lottery  :18093  │
+   │  (flash sale)   │      │   (group buy)   │      │    (lottery)     │
+   └────────┬────────┘      └────────┬────────┘      └────────┬────────┘
+            │  X-Internal-Token       │  X-Internal-Token      │
+            └─────────────┬───────────┴───────────┬───────────┘
+                          ▼                       ▼
+                 ┌─────────────────┐    ┌──────────────────────┐
+                 │  stock :18094   │    │  RabbitMQ (outbox)   │
+                 │ (shared stock)  │    │  eventual consistency│
+                 └────────┬────────┘    └──────────┬───────────┘
+                          │                        │
+        ┌─────────────────┼────────────────────────┼─────────────────┐
+        ▼                 ▼                        ▼                 ▼
+   ┌──────────┐    ┌──────────────┐        ┌────────────┐   ┌────────────┐
+   │  MySQL   │    │    Redis 7    │        │    Nacos   │   │ Prometheus │
+   │ (per ctx)│    │ (Lua deduct) │        │  config    │   │  metrics   │
+   └──────────┘    └──────────────┘        └────────────┘   └────────────┘
 ```
 
-- **领域层（biz）**：定义Repository接口，不依赖任何外部实现
-- **基础设施层（data）**：实现Repository接口，可替换（MySQL/Redis/Mock）
-- **应用层（service）**：编排领域服务，不关心具体实现
+Each business service owns its own MySQL database (seckill / groupbuy /
+lottery / stock) — database-per-service isolation. Redis is shared for the
+flash-sale hot path; Nacos holds environment configuration; Prometheus scrapes
+the `/metrics` endpoint exposed by every service.
 
-### 2. Redis Lua原子扣减库存
+---
+
+## Tech Stack
+
+| Concern            | Technology                                             |
+|--------------------|--------------------------------------------------------|
+| Language           | Go 1.25                                                |
+| Microservice frame | Kratos v3 (`transport/http`)                           |
+| Dependency inject. | Wire (compile-time)                                    |
+| ORM                | Ent (`entgo.io/ent`)                                   |
+| Identity           | JWT (`golang-jwt/jwt/v5`)                              |
+| ID generation      | Meituan Leaf segment mode (MySQL-backed)               |
+| Cache              | Redis 7 (`redis/go-redis/v9`), Lua atomic scripts     |
+| Message queue      | RabbitMQ (outbox / async events)                       |
+| Config center      | Nacos (`nacos-group/nacos-sdk-go/v2`)                 |
+| Rate limiting      | Token bucket (`golang.org/x/time/rate`)                |
+| Observability      | Prometheus client, in-process trace collector, `slog`  |
+| Containerization   | Docker Compose                                         |
+
+---
+
+## Project Layout
+
+```
+.
+├── api/                 # Protobuf/OpenAPI service contracts (per domain)
+├── cmd/                 # Service entrypoints (gateway, seckill, groupbuy, lottery, stock)
+│   └── <svc>/wire_gen.go
+├── configs/             # Per-service Kratos bootstrap configs
+├── deploy/              # Docker / MySQL init / Nacos / Prometheus assets
+│   ├── docker-compose.yml
+│   ├── docker-compose-env.yml
+│   └── docker-compose-microservices.yml
+├── docs/                # Architecture & design notes
+├── internal/
+│   ├── conf/            # Generated config structs
+│   ├── gateway/         # Reverse proxy + auth pass-through
+│   ├── seckill/         # Flash sale domain (biz / data / service / server)
+│   ├── groupbuy/        # Group buy domain
+│   ├── lottery/         # Lottery domain
+│   └── stock/           # Shared inventory domain
+└── pkg/
+    ├── auth/            # JWT issue/verify + HTTP/gRPC auth middleware
+    ├── saga/            # Orchestration Saga engine (compensation)
+    ├── idgen/           # Leaf segment-mode ID generator
+    ├── middleware/      # Trace / recovery / ratelimit / metrics / auth chain
+    ├── observability/   # Prometheus metrics + trace collector
+    ├── config/          # Nacos + file/env loader
+    ├── ratelimit/       # Token-bucket limiter
+    ├── stockclient/     # Internal client for the stock service
+    ├── common/          # Errors, events, response, shutdown, trace helpers
+    └── log/             # Logger setup
+```
+
+Each domain follows the same internal shape:
+
+```
+biz/      domain interfaces + business rules (pure, no framework deps)
+data/     Ent schemas + repository implementations (dependency inversion)
+service/  transport adapters (HTTP handlers, request/response mapping)
+server/   Kratos server wiring
+```
+
+---
+
+## Core Designs
+
+### 1. DDD hexagonal architecture + dependency inversion
+
+The `biz` layer declares repository interfaces; the `data` layer implements
+them with Ent/Redis/RabbitMQ. Application code in `biz` depends only on
+interfaces, so infrastructure is swappable (MySQL ↔ Mock) and unit-testable
+without a database.
+
+### 2. JWT identity & zero-trust user_id
+
+`pkg/auth` issues and verifies JWT bearer tokens. A middleware extracts
+`user_id` from the verified claim and injects it into `context`. Business
+handlers **never** read `user_id` from the request body — this closes the
+impersonation hole (any client could otherwise place orders as another user).
+
+Two trust levels:
+
+- **User-facing endpoints** require `Authorization: Bearer <jwt>`.
+- **Inter-service endpoints** (e.g. groupbuy settlement/refund, stock
+  deduct/restore) require `X-Internal-Token: <MARKETING_INTERNAL_TOKEN>`.
+
+`MARKETING_AUTH_DISABLED=1` turns auth off for local development.
+
+### 3. Leaf segment-mode ID generator
+
+`pkg/idgen` implements Meituan Leaf's segment mode. Each `bizTag` batches a
+range from a `SegmentStore` (MySQL `SELECT … FOR UPDATE` + `UPDATE`) into
+process-local memory and dispenses IDs sequentially; the next range is fetched
+only when the current one is exhausted. ID allocation is therefore nearly
+lock-free against the center store, and order IDs are globally unique and
+monotonically increasing across services.
+
+### 4. Redis Lua atomic stock deduction (flash sale)
+
+On the hot path, stock is decremented inside a single Lua script so the
+read-decrement-check is atomic — no distributed lock required:
 
 ```lua
 local stock = tonumber(redis.call('GET', KEYS[1]))
@@ -128,135 +198,243 @@ redis.call('DECR', KEYS[1])
 return 1
 ```
 
-**优势**：单次Lua脚本执行，原子性保证，无需分布式锁
+After the atomic pass, the order is persisted asynchronously through the
+message pipeline, and a timeout job closes unpaid orders and restores stock.
 
-### 3. 责任链模式（拼团试算）
+### 5. Saga distributed transaction (group buy settlement / refund)
 
-```
-RootNode -> MarketNode -> SwitchNode -> TagNode -> EndNode
-```
+`pkg/saga` is an orchestration engine: a `Coordinator` runs `Step{Action,
+Compensate}` in order and, on failure, runs compensations in **reverse order**.
+Compensation runs under `context.WithoutCancel` so a cancelled parent context
+does not abort the rollback; partial failures are collected in `SagaError`.
+Settlement deducts cross-service stock (compensate: restore), idempotently
+persists team state, then emits a "team formed" notification.
 
-每个节点可独立测试，可热插拔
+### 6. Local outbox + RabbitMQ (eventual consistency)
 
-### 4. 策略模式（退单）
+Long-running side effects (notifications, async order persistence) are written
+to a local message table inside the business transaction, then a scanner /
+RabbitMQ publisher relays them. This keeps the business write and the event
+emit atomic at the source and lets consumers retry toward eventual consistency.
 
-```go
-type RefundStrategy interface {
-    Refund(ctx context.Context, order *GroupBuyOrder) error
-}
+### 7. Unified stock abstraction
 
-// 未支付退单
-type UnpaidRefundStrategy struct{}
-// 已支付退单
-type PaidRefundStrategy struct{}
-```
-
-### 5. 本地消息表（最终一致性）
-
-```
-1. 业务操作 + 消息写入同一事务
-2. 定时任务扫描未发送消息
-3. 发送成功后标记完成
-4. 失败重试，保证最终一致
-```
-
-### 6. 统一库存抽象（stock服务）
+The `stock` service is the single owner of inventory. Callers address stock by
+`stock_key`:
 
 ```
-stock_key 命名规范：
-  product:{sku_id}   - 商品库存（秒杀扣减）
-  team:{team_id}     - 团位库存（拼团扣减）
-  prize:{prize_id}   - 奖品库存（抽奖扣减）
+product:{sku_id}   - goods stock (flash sale deduct)
+team:{team_id}     - team slots  (group buy deduct)
+prize:{prize_id}   - prize stock (lottery deduct)
 ```
 
-三个业务服务统一调用stock服务扣减库存，通过stock_key区分库存类型。
+All three scenarios go through one service, so deduction, restoration, and
+queries share one consistency boundary.
 
-## API接口
+### 8. Reusable middleware chain
 
-### 秒杀服务 (port: 18091)
+`pkg/middleware` composes, in order: **trace** (UUID trace/span id) →
+**recovery** → **ratelimit** (token bucket per key) → **metrics** → **auth**
+(JWT / internal token). Each stage is a standard `func(http.Handler)
+http.Handler`, so it is testable and reorderable independently.
 
-| 接口 | 方法 | 说明 |
-|------|------|------|
-| /api/v1/seckill/activity/query | GET | 查询活动 |
-| /api/v1/seckill/order/create | POST | 秒杀下单 |
-| /api/v1/seckill/order/query | GET | 查询订单 |
-| /health | GET | 健康检查 |
+### 9. Observability
 
-### 拼团服务 (port: 18092)
+- **Metrics**: Prometheus counters/histograms for request total, duration,
+  status, DB connections, cache hit-rate, and per-business gauges, exposed at
+  `/metrics` for scraping.
+- **Tracing**: an in-process `TraceCollector` builds a span tree
+  (trace/span/parent, tags, logs) propagated through the middleware chain.
+- **Logging**: structured `slog` output, wired through Kratos' logger.
 
-| 接口 | 方法 | 说明 |
-|------|------|------|
-| /api/v1/groupbuy/activity/query | GET | 查询活动 |
-| /api/v1/groupbuy/trial | POST | 试算优惠 |
-| /api/v1/groupbuy/order/lock | POST | 锁单 |
-| /api/v1/groupbuy/order/settlement | POST | 结算 |
-| /api/v1/groupbuy/order/refund | POST | 退单 |
+### 10. Design patterns in use
 
-### 抽奖服务 (port: 18093)
+| Pattern            | Where                                        |
+|--------------------|----------------------------------------------|
+| Responsibility chain | Group buy trial / lock / settlement nodes |
+| Strategy           | Discount calculation, refund strategies      |
+| Factory            | Strategy / node creation                     |
+| Repository         | `biz` interfaces implemented by `data`       |
+| Anti-corruption layer | DTO ↔ domain model mapping               |
 
-| 接口 | 方法 | 说明 |
-|------|------|------|
-| /api/v1/lottery/activity/query | GET | 查询活动 |
-| /api/v1/lottery/raffle | POST | 抽奖 |
-| /api/v1/lottery/order/query | GET | 查询中奖记录 |
+---
 
-### 公共库存服务 (port: 18094)
+## Getting Started
 
-| 接口 | 方法 | 说明 |
-|------|------|------|
-| /api/v1/stock/deduct | POST | 扣减库存 |
-| /api/v1/stock/query | GET | 查询库存 |
-| /api/v1/stock/restore | POST | 恢复库存 |
-
-### Gateway网关 (port: 8080)
-
-| 接口 | 方法 | 说明 |
-|------|------|------|
-| /api/v1/gateway/proxy/ | ANY | 转发到指定服务 |
-| /health | GET | 健康检查 |
-
-## 单元测试
+### Option A — Docker Compose (full stack)
 
 ```bash
-# 运行所有单元测试
-go test ./... -v
+# Bring up MySQL, Redis, RabbitMQ, Nacos, Prometheus and all five services.
+docker compose -f deploy/docker-compose-microservices.yml up -d
 
-# 运行特定服务测试
-go test ./internal/seckill/biz/... -v
-go test ./internal/groupbuy/biz/... -v
-go test ./internal/lottery/biz/... -v
+# Tail logs
+docker compose -f deploy/docker-compose-microservices.yml logs -f
 
-# 运行Redis集成测试（需要本地Redis）
-go test ./internal/seckill/data/... -v -run TestRedis
+# Tear down
+docker compose -f deploy/docker-compose-microservices.yml down
 ```
 
-### 测试覆盖
+Set the auth secrets before starting (defaults are dev placeholders):
 
-| 服务 | 测试数 | 覆盖内容 |
-|------|--------|----------|
-| seckill | 6 | 下单成功、库存不足、重复下单、并发扣减 |
-| groupbuy | 7 | 试算(ZJ/ZK/N)、锁单、结算、退单 |
-| lottery | 4 | 抽奖成功、多次抽奖、多用户 |
+```bash
+export MARKETING_AUTH_SECRET="a-strong-secret"
+export MARKETING_INTERNAL_TOKEN="a-strong-internal-token"
+```
 
-## 设计模式
+### Option B — Local development
 
-| 模式 | 使用场景 | 说明 |
-|------|---------|------|
-| 责任链 | 拼团试算/锁单/结算 | 节点可热插拔 |
-| 策略模式 | 折扣计算/退单 | 运行时切换策略 |
-| 工厂模式 | 策略创建 | 解耦创建和使用 |
-| 仓储模式 | 数据访问 | 接口抽象，可替换 |
-| 防腐层 | DTO转换 | 保护领域模型 |
+```bash
+# 1. Start only the infrastructure.
+docker compose -f deploy/docker-compose-env.yml up -d
 
-## 面试亮点
+# 2. Initialize databases (per-service schemas under deploy/mysql).
+mysql -u root -proot < deploy/mysql/init.sql
 
-1. **Redis Lua原子操作**：库存扣减无需分布式锁
-2. **DDD六边形架构**：领域层纯净，依赖倒置
-3. **分布式事务**：本地消息表+定时补偿
-4. **高并发设计**：Redis预热+异步落单
-5. **设计模式**：责任链、策略模式实战应用
-6. **Docker Compose**：一键部署完整环境
+# 3. Run the five services (separate terminals).
+export MARKETING_AUTH_SECRET="dev-secret" MARKETING_INTERNAL_TOKEN="dev-internal"
+go run ./cmd/gateway
+go run ./cmd/seckill
+go run ./cmd/groupbuy
+go run ./cmd/lottery
+go run ./cmd/stock
+```
+
+### Health checks
+
+```bash
+curl http://localhost:8080/health          # gateway
+curl http://localhost:18091/health         # seckill
+curl http://localhost:18092/health         # groupbuy
+curl http://localhost:18093/health         # lottery
+curl http://localhost:18094/health         # stock
+curl http://localhost:18094/metrics        # prometheus scrape target
+```
+
+### Example calls
+
+```bash
+# Obtain a JWT for user 1001 (auth issuer endpoint / your token service)
+TOKEN=$(curl -s ... | jq -r .token)
+
+# Flash sale order (user_id comes from the token, not the body)
+curl -X POST http://localhost:8080/api/v1/seckill/order/create \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"activity_id":"act_001"}'
+
+# Group buy trial
+curl -X POST http://localhost:8080/api/v1/groupbuy/trial \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"activity_id":"act_001","goods_id":"g_1","source":"NEW"}'
+
+# Lottery raffle
+curl -X POST http://localhost:8080/api/v1/lottery/raffle \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"activity_id":"act_001"}'
+```
+
+> Settlement and refund are internal operations. They are invoked by the
+> system (e.g. the close-order job or a completed team) with the
+> `X-Internal-Token` header, not by end users.
+
+---
+
+## API Reference
+
+All user-facing routes are exposed through the gateway at `:8080` and routed to
+the owning service. Internal routes are marked **[internal]** and require
+`X-Internal-Token`.
+
+### Gateway (`:8080`)
+
+| Route                     | Method | Notes                         |
+|---------------------------|--------|-------------------------------|
+| `/api/v1/gateway/proxy/`  | ANY    | Reverse proxy to a service    |
+| `/health`                 | GET    | Health check                  |
+
+### Flash sale (`:18091`)
+
+| Route                                | Method | Auth            |
+|-------------------------------------|--------|-----------------|
+| `/api/v1/seckill/activity/query`    | GET    | JWT (optional)  |
+| `/api/v1/seckill/order/create`      | POST   | JWT Bearer      |
+| `/api/v1/seckill/order/query`       | GET    | JWT Bearer      |
+
+### Group buy (`:18092`)
+
+| Route                                  | Method | Auth                     |
+|---------------------------------------|--------|--------------------------|
+| `/api/v1/groupbuy/activity/query`     | GET    | JWT (optional)           |
+| `/api/v1/groupbuy/trial`              | POST   | JWT Bearer               |
+| `/api/v1/groupbuy/lock`               | POST   | JWT Bearer               |
+| `/api/v1/groupbuy/settlement`         | POST   | **[internal]** token     |
+| `/api/v1/groupbuy/refund`             | POST   | **[internal]** token     |
+
+### Lottery (`:18093`)
+
+| Route                                  | Method | Auth            |
+|---------------------------------------|--------|-----------------|
+| `/api/v1/lottery/activity/query`      | GET    | JWT (optional)  |
+| `/api/v1/lottery/strategy/query`      | GET    | JWT (optional)  |
+| `/api/v1/lottery/raffle`              | POST   | JWT Bearer      |
+| `/api/v1/lottery/order/query`         | GET    | JWT Bearer      |
+
+### Stock (`:18094`)
+
+| Route                     | Method | Auth                     |
+|---------------------------|--------|--------------------------|
+| `/api/v1/stock/query`     | GET    | **[internal]** token     |
+| `/api/v1/stock/deduct`    | POST   | **[internal]** token     |
+| `/api/v1/stock/restore`   | POST   | **[internal]** token     |
+
+---
+
+## Testing
+
+```bash
+# Run the full suite
+go test ./...
+
+# Domain logic only
+go test ./internal/seckill/biz/... ./internal/groupbuy/biz/... ./internal/lottery/biz/...
+
+# Redis integration tests (requires a local Redis)
+go test ./internal/seckill/data/... -run TestRedis
+```
+
+Tests cover flash-sale success / insufficient stock / duplicate order /
+concurrent deduction, group-buy trial (ZJ/ZK/N) / lock / settlement / refund,
+lottery success / repeated draws / multi-user, plus `pkg/auth` and `pkg/saga`
+unit suites (incl. compensation ordering and `alg=none` rejection).
+
+---
+
+## Roadmap
+
+Implemented:
+
+- [x] Flash sale with Redis Lua deduction + async persistence + close-order job
+- [x] Group buy: strategy tree + responsibility chain + Saga settlement/refund
+- [x] Lottery: rule tree + quota + prize granting
+- [x] Unified stock service
+- [x] JWT auth (user + internal token) and zero-trust `user_id`
+- [x] Leaf segment-mode global IDs
+- [x] Local outbox + RabbitMQ eventual consistency
+- [x] Nacos config center
+- [x] Observability: Prometheus metrics, trace collector, `slog`
+- [x] Docker Compose full-stack deployment
+
+Planned:
+
+- [ ] CI/CD pipeline (build → test → image → deploy)
+- [ ] Load-test baseline and a published benchmark report
+- [ ] Additional promotional scenarios (e.g. full reduction, coupon)
+- [ ] Sharding / read-write split for larger data scale
+
+---
 
 ## License
 
-MIT
+[MIT](LICENSE)
